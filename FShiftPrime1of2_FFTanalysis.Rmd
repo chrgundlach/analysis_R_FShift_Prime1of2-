@@ -1,0 +1,441 @@
+---
+title: "FFT_SSVEP_analysis"
+author: "Christopher"
+date: "17 6 2025"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    theme: flatly
+---
+
+Modelling of ~~raw~~ [*CSD based*] amplitude values from fft-based data
+via linear mixed models
+via standard anova models
+
+```{r load_package, message = FALSE, warning = FALSE}
+library(lme4)
+library(readxl)
+library(tidyverse)
+library(data.table)
+library(tidyverse)
+library(afex)
+library(broom)
+library(apa)
+library(kableExtra)
+library(lmerTest)
+library(pbkrtest)
+library(effects)
+library(visreg)
+library(sjPlot)
+library(broom.mixed)
+library(pander)
+library(mediation)
+library(multcomp)
+library(multcompView)
+library(magrittr)
+library(multipanelfigure)
+library(ggbeeswarm)
+library(lsmeans)
+library(BayesFactor)
+library(ggpubr)
+library(gpairs)
+library(DescTools)
+library(cowplot)
+library(ggpol)
+library(logspline)
+
+source('C:/Dropboxdata/Dropbox/work/R-statistics/general_functions/RainCloudPlots/tutorial_R/R_rainclouds.R')
+source('C:/Dropboxdata/Dropbox/work/R-statistics/general_functions/RainCloudPlots/tutorial_R/R_rainclouds.R')
+
+source('C:/Dropboxdata/Dropbox/work/R-statistics/examples/Bayesian_rank-based_hypothesis_testing/rankBasedCommonFunctions.R')
+source('C:/Dropboxdata/Dropbox/work/R-statistics/examples/Bayesian_rank-based_hypothesis_testing/rankSumSampler.R') # Wilcoxon rank sum function
+source('C:/Dropboxdata/Dropbox/work/R-statistics/examples/Bayesian_rank-based_hypothesis_testing/signRankSampler.R') # Wilcoxon signed-rank function
+source('C:/Dropboxdata/Dropbox/work/R-statistics/examples/Bayesian_rank-based_hypothesis_testing/spearmanSampler.R')# Spearman's rho function
+
+
+
+
+#!!!!!!! relevant
+# broad cluster | larger central cluster 
+# CSD based normalized to pre-cue baseline in %
+DATAPath = "data_in/FFT_Amp_data_CenterLarge_07-24-2025_13-20.csv"
+t_baseline = c(-1000, 0)
+
+
+
+#!!!!!!!
+
+
+
+
+
+
+options(scipen=1, digits=7)
+```
+<style type="text/css">
+.main-container {
+max-width: 1800px !important;
+margin-left: auto;
+margin-right: auto;
+}
+</style>
+
+
+## Prepare data  
+<br>  
+
+1.  Read in data: 
++ `r DATAPath`
++ with pre-cue  [`r toString(t_baseline)`] ms
+
+<br>  
+
+```{r load_data,results = "hide", fig.show = "hide", warning = FALSE}
+# sub_sample = c(0)
+sub_sample = as.factor(c(5)) # no ssvep people discarded
+# sub_sample = as.factor(c(42)) # low trial number
+
+
+# read in data
+DataIn <- read.csv(DATAPath, sep = ";") %>%
+  mutate(subjects = as.factor(subjects))%>%
+  filter(!subjects %in% sub_sample)%>%
+  mutate(RDK_isattended = factor(RDK_isattended, levels=c('attended','not attended'), ordered = T),
+         RDK_isprimed = factor(RDK_isprimed, levels=c('primed','nonprimed','not attended'), ordered = T))
+head(DataIn)
+str(DataIn)
+```
+## Illustrate SSVEP Data
+
+### 1a  Illustrate Data as is | center RDKs
+
+<br>  
+
+```{r plot_data_st_center, results = "hide",  fig.height=3, fig.width=4, warning = FALSE}
+#evoked raw#### for center
+dat2plot <- DataIn %>%
+  group_by(subjects, time, RDK_isprimed)%>%
+  summarise(amplitude_evoked=mean(amplitude_evoked), modulation_evoked=mean(modulation_evoked), subtraction_evoked=mean(subtraction_evoked))
+
+theme_set(theme_bw())
+ggplot(dat2plot, aes(x = interaction(time,RDK_isprimed), y = amplitude_evoked, fill = RDK_isprimed)) +
+  # geom_hline(yintercept=0, show.legend = FALSE) +
+  geom_line(aes(group = interaction(subjects,RDK_isprimed)),colour = "grey60",alpha = 0.5,size =0.5) +
+  geom_beeswarm(aes(color = RDK_isprimed, x = interaction(time,RDK_isprimed),
+                    group = RDK_isprimed), cex=2, size = 3,alpha=1,fill="grey40",shape=21)+
+  # geom_point(aes(color = condition, x = interaction(time,condition),
+  #                   group = condition), size = 4,alpha=0.4)+
+  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y.., color =RDK_isprimed), geom='errorbar', width=0.9, size=1.5) +
+  scale_x_discrete("time windows in s", breaks=waiver(), labels = rep(c("[-1 0]","[0.5 1.5]","[1 2]"),1,9)) +
+  theme(legend.position="bottom") +
+  ylab(expression(paste("amplitude in muV/cm²")))+
+  labs(title=sprintf("SSVEP amplitudes | evoked"),
+       subtitle="collapsed across frequencies")+
+  scale_fill_brewer(palette = "Dark2")+
+  scale_color_brewer(palette = "Dark2")
+
+
+theme_set(theme_bw())
+ggplot(dat2plot, aes(x = interaction(time,RDK_isprimed), y = modulation_evoked, fill = RDK_isprimed)) +
+  # geom_hline(yintercept=0, show.legend = FALSE) +
+  geom_line(aes(group = interaction(subjects,RDK_isprimed)),colour = "grey60",alpha = 0.5,size =0.5) +
+  geom_beeswarm(aes(color = RDK_isprimed, x = interaction(time,RDK_isprimed),
+                    group = RDK_isprimed), cex=2, size = 3,alpha=1,fill="grey40",shape=21)+
+  # geom_point(aes(color = condition, x = interaction(time,condition),
+  #                   group = condition), size = 4,alpha=0.4)+
+  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y.., color =RDK_isprimed), geom='errorbar', width=0.9, size=1.5) +
+  scale_x_discrete("time windows in s", breaks=waiver(), labels = rep(c("[-1 0]","[0.5 1.5]","[1 2]"),1,9)) +
+  theme(legend.position="bottom") +
+  ylab(expression(paste("modulation in %")))+
+  labs(title=sprintf("SSVEP amplitudes | evoked"),
+       subtitle="collapsed across frequencies")+
+  scale_fill_brewer(palette = "Dark2")+
+  scale_color_brewer(palette = "Dark2")
+
+theme_set(theme_bw())
+ggplot(dat2plot, aes(x = interaction(time,RDK_isprimed), y = subtraction_evoked, fill = RDK_isprimed)) +
+  # geom_hline(yintercept=0, show.legend = FALSE) +
+  geom_line(aes(group = interaction(subjects,RDK_isprimed)),colour = "grey60",alpha = 0.5,size =0.5) +
+  geom_beeswarm(aes(color = RDK_isprimed, x = interaction(time,RDK_isprimed),
+                    group = RDK_isprimed), cex=2, size = 3,alpha=1,fill="grey40",shape=21)+
+  # geom_point(aes(color = condition, x = interaction(time,condition),
+  #                   group = condition), size = 4,alpha=0.4)+
+  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y.., color =RDK_isprimed), geom='errorbar', width=0.9, size=1.5) +
+  scale_x_discrete("time windows in s", breaks=waiver(), labels = rep(c("[-1 0]","[0.5 1.5]","[1 2]"),1,9)) +
+  #facet_grid(.~RDK_colorlum)+
+  theme(legend.position="bottom") +
+  ylab(expression(paste("amplitude diff in muV/cm²")))+
+  labs(title=sprintf("SSVEP amplitudes | evoked"),
+       subtitle="collapsed across frequencies")+
+  scale_fill_brewer(palette = "Dark2")+
+  scale_color_brewer(palette = "Dark2")
+```
+### 1b  Illustrate Data as is | center RDKs
+
+plot differently
+
+<br>  
+
+```{r plot_data_st_center_2, results = "hide",  fig.height=5, fig.width=4, warning = FALSE}
+#evoked raw#### for center
+
+# set overall limits?
+dat2plot <- DataIn %>%
+  group_by(subjects,  time, RDK_isprimed)%>%
+  summarise(amplitude_evoked=mean(amplitude_evoked), modulation_evoked=mean(modulation_evoked))%>%
+  filter(time=='[0.5 1.5] ')
+# set limits
+yax_limits <- c( min(dat2plot$modulation_evoked), max(dat2plot$modulation_evoked))
+yax_limits <- round(yax_limits + c(-1, 1)*diff(yax_limits)*0.1)
+yax_limits <- yax_limits + c(-1, 1)*diff(yax_limits)*0.1
+
+
+theme_set(theme_bw())
+plot1 <- ggplot(dat2plot, aes(x = RDK_isprimed, y = modulation_evoked, fill = RDK_isprimed)) +
+  geom_hline(yintercept=0, show.legend = FALSE) +
+  geom_line(aes(group = interaction(subjects,time)),colour = "grey60",alpha = 1,size =0.5) +
+  geom_beeswarm(aes(color = RDK_isprimed, x = RDK_isprimed,
+                    group = RDK_isprimed), cex=3, size = 5,alpha=1,fill="grey40",shape=21)+
+  # geom_point(aes(color = RDK_isattended, x = interaction(time,RDK_isattended),
+  #                   group = RDK_isattended), size = 4,alpha=0.4)+
+  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y.., color =RDK_isprimed), geom='errorbar', width=0.9, size=1.5) +
+  scale_x_discrete("RDK_isattended", breaks=waiver(), labels = rep(c(""),1,2)) +
+  # theme(legend.position="bottom") +
+  ylab(expression(paste("amplitude modulation in %")))+
+  # scale_fill_manual(values=c("steelblue2", "#F03F3F"))+
+  # scale_color_manual(values=c("steelblue2", "#F03F3F"))+
+  scale_fill_manual(values=c("#F1831A", "#293C4A", "#198A83"))+
+  scale_color_manual(values=c("#F1831A", "#293C4A", "#198A83"))+
+   # scale_fill_manual(values=c("#193A3D", "#F03F3F"))+
+  # scale_color_manual(values=c("#193A3D", "#F03F3F"))+
+  # scale_fill_manual(values=c(rgb2hex(0.0, 153.0, 204.0),rgb2hex(0.0, 77, 102.0)))+
+  # scale_color_manual(values=c(rgb2hex(0.0, 153.0, 204.0),rgb2hex(0.0, 77, 102.0)))+
+  theme(legend.position="none")+
+  # scale_y_continuous(limits=c(-60, 140))
+  scale_y_continuous(limits=yax_limits)
+
+
+plot2 <- ggplot(dat2plot, aes(y = modulation_evoked, fill = RDK_isprimed, x = 1)) +
+  geom_flat_violin(aes(fill = RDK_isprimed),position = position_nudge(x = .1, y = 0), 
+                   adjust = 1.3, trim = FALSE, alpha = 1, colour = NA)+
+  geom_hline(yintercept=0, show.legend = FALSE) +
+  scale_fill_manual(values=c("#F1831A", "#293C4A", "#198A83"))+
+  scale_color_manual(values=c("#F1831A", "#293C4A", "#198A83"))+
+  # scale_fill_manual(values=c("#193A3D", "#F03F3F"))+
+  # scale_color_manual(values=c("#193A3D", "#F03F3F"))+
+  # scale_fill_manual(values=c("steelblue2", "#F03F3F"))+
+  # scale_color_manual(values=c("steelblue2", "#F03F3F"))+
+  # scale_fill_manual(values=c(rgb2hex(0.0, 153.0, 204.0),rgb2hex(0.0, 77, 102.0)))+
+  # scale_color_manual(values=c(rgb2hex(0.0, 153.0, 204.0),rgb2hex(0.0, 77, 102.0)))+
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  # scale_y_continuous(limits=c(-60, 140))
+  scale_y_continuous(limits=yax_limits)
+
+
+
+# cowplot::plot_grid(plot1, plot2, plot3, ncol = 3,labels = "AUTO")
+plotttitle <- ggdraw() + 
+  draw_label("SSVEP mod. | evoked \n'[0.5 1.5] s", fontface='bold', size = 10)
+plotplots <- ggarrange(plot1, plot2,ncol = 2,common.legend = TRUE,align = "h", widths=c(3,1))
+
+savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", width = 4, height = 5, unit = "in")
+saveplot <- ggarrange(plotttitle, plotplots, nrow = 2, heights=c(0.2, 1))
+
+savefig %<>%
+  fill_panel(saveplot, column = 1, row = 1)
+savefig
+# save_multi_panel_figure(savefig, "figures/FFT_BeeSwarm_Mod_ALPHA_COL_34subs.eps")
+
+
+
+dat2plot <- DataIn %>%
+  group_by(subjects,  time, RDK_isprimed)%>%
+  summarise(amplitude_evoked=mean(amplitude_evoked), modulation_evoked=mean(modulation_evoked))%>%
+  filter(time=='[1 2] ')
+# set limits
+yax_limits <- c( min(dat2plot$modulation_evoked), max(dat2plot$modulation_evoked))
+yax_limits <- round(yax_limits + c(-1, 1)*diff(yax_limits)*0.1)
+yax_limits <- yax_limits + c(-1, 1)*diff(yax_limits)*0.1
+
+
+theme_set(theme_bw())
+plot1 <- ggplot(dat2plot, aes(x = RDK_isprimed, y = modulation_evoked, fill = RDK_isprimed)) +
+  geom_hline(yintercept=0, show.legend = FALSE) +
+  geom_line(aes(group = interaction(subjects,time)),colour = "grey60",alpha = 1,size =0.5) +
+  geom_beeswarm(aes(color = RDK_isprimed, x = RDK_isprimed,
+                    group = RDK_isprimed), cex=3, size = 5,alpha=1,fill="grey40",shape=21)+
+  # geom_point(aes(color = RDK_isattended, x = interaction(time,RDK_isattended),
+  #                   group = RDK_isattended), size = 4,alpha=0.4)+
+  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y.., color =RDK_isprimed), geom='errorbar', width=0.9, size=1.5) +
+  scale_x_discrete("RDK_isattended", breaks=waiver(), labels = rep(c(""),1,2)) +
+  # theme(legend.position="bottom") +
+  ylab(expression(paste("amplitude modulation in %")))+
+  # scale_fill_manual(values=c("steelblue2", "#F03F3F"))+
+  # scale_color_manual(values=c("steelblue2", "#F03F3F"))+
+  scale_fill_manual(values=c("#F1831A", "#293C4A", "#198A83"))+
+  scale_color_manual(values=c("#F1831A", "#293C4A", "#198A83"))+
+   # scale_fill_manual(values=c("#193A3D", "#F03F3F"))+
+  # scale_color_manual(values=c("#193A3D", "#F03F3F"))+
+  # scale_fill_manual(values=c(rgb2hex(0.0, 153.0, 204.0),rgb2hex(0.0, 77, 102.0)))+
+  # scale_color_manual(values=c(rgb2hex(0.0, 153.0, 204.0),rgb2hex(0.0, 77, 102.0)))+
+  theme(legend.position="none")+
+  # scale_y_continuous(limits=c(-60, 140))
+  scale_y_continuous(limits=yax_limits)
+
+
+plot2 <- ggplot(dat2plot, aes(y = modulation_evoked, fill = RDK_isprimed, x = 1)) +
+  geom_flat_violin(aes(fill = RDK_isprimed),position = position_nudge(x = .1, y = 0), 
+                   adjust = 1.3, trim = FALSE, alpha = 1, colour = NA)+
+  geom_hline(yintercept=0, show.legend = FALSE) +
+  scale_fill_manual(values=c("#F1831A", "#293C4A", "#198A83"))+
+  scale_color_manual(values=c("#F1831A", "#293C4A", "#198A83"))+
+  # scale_fill_manual(values=c("#193A3D", "#F03F3F"))+
+  # scale_color_manual(values=c("#193A3D", "#F03F3F"))+
+  # scale_fill_manual(values=c("steelblue2", "#F03F3F"))+
+  # scale_color_manual(values=c("steelblue2", "#F03F3F"))+
+  # scale_fill_manual(values=c(rgb2hex(0.0, 153.0, 204.0),rgb2hex(0.0, 77, 102.0)))+
+  # scale_color_manual(values=c(rgb2hex(0.0, 153.0, 204.0),rgb2hex(0.0, 77, 102.0)))+
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  # scale_y_continuous(limits=c(-60, 140))
+  scale_y_continuous(limits=yax_limits)
+
+
+
+# cowplot::plot_grid(plot1, plot2, plot3, ncol = 3,labels = "AUTO")
+plotttitle <- ggdraw() + 
+  draw_label("SSVEP mod. | evoked \n'[1 2] s", fontface='bold', size = 10)
+plotplots <- ggarrange(plot1, plot2,ncol = 2,common.legend = TRUE,align = "h", widths=c(3,1))
+
+savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", width = 4, height = 5, unit = "in")
+saveplot <- ggarrange(plotttitle, plotplots, nrow = 2, heights=c(0.2, 1))
+
+savefig %<>%
+  fill_panel(saveplot, column = 1, row = 1)
+savefig
+# save_multi_panel_figure(savefig, "figures/FFT_BeeSwarm_Mod_ALPHA_COL_34subs.eps")
+
+
+```
+
+
+
+
+
+## Statistical analysis
+
+
+
+
+### Central Stimuli
+
+
+**modulation** ~ **ATTENTION**
+
+- t-test post-cue modulation against zero for primed, nonmprimed and unattended color
+- t-test difference of post-cue modulation for primed vs nonmprimed vs unattended color
+
+<br> 
+
+```{r Stat central stimuli, message=FALSE, warning=FALSE, include=TRUE}
+dat2plot <- DataIn %>%
+  filter(time != '[-1 0] ')%>%
+  group_by(subjects, time, RDK_isprimed)%>%
+  summarise(amplitude_evoked=mean(amplitude_evoked), modulation_evoked=mean(modulation_evoked))%>%
+  rename(timewindow = time)
+  
+
+dat2plot %>%
+  ungroup()%>%
+  group_by(timewindow, RDK_isprimed)%>%
+  nest()%>%
+  mutate(stats = map(data, ~broom::tidy(
+    t.test(modulation_evoked ~ 1, data = .)
+  ))) %>%
+  mutate(
+    t_test_bf = map(data, ~{extractBF(ttestBF(x = .$modulation_evoked, data = .,iterations=num.iter,rscale = sqrt(2)/2))})
+  )%>%
+  mutate(meanval = map(data, ~ mean(.x$modulation_evoked))) %>%
+  mutate(std = map(data, ~ sd(.x$modulation_evoked))) %>%
+  dplyr::select(-data) %>%
+  unnest(cols = c(stats, t_test_bf, meanval, std))%>%
+  mutate(BF10 = bf, BF01 = 1/bf)%>%
+  dplyr::select(timewindow, RDK_isprimed, meanval, std,  statistic, parameter, p.value, BF10, BF01)%>%
+  ungroup()%>%
+  group_by(timewindow)%>%
+  # mutate(p.value = p.adjust(p.value, method="holm")) %>% # none, holm
+  # mutate(p.value = p.adjust(p.value, method="bonferroni")) %>% # none, holm
+  mutate(p.value = p.adjust(p.value, method="fdr")) %>% # none, holm
+  # mutate(p.value = p.adjust(p.value, method="none")) %>% # none, holm
+  ungroup()%>%
+  mutate(Dz = `statistic`/sqrt(parameter +1))%>%
+  mutate(
+    p.value = cell_spec(ifelse(round(p.value,4)<.001,"< .001",round(p.value,4)), 
+                        color = ifelse(is.nan(p.value),"blue", ifelse(p.value < .05, "green", "red")),
+                        bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
+                        align = "center")
+  ) %>%
+  kbl(escape = F, digits = c(3,3,3,3,3,3,3,3,3), 
+        caption = c("modulation | t-tests for modulation against zero | FDR-corrected")) %>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
+
+
+
+dat2plot %>%
+  dplyr::select(-amplitude_evoked)%>%
+  pivot_wider(names_from = "RDK_isprimed", values_from = "modulation_evoked")%>%
+  mutate(primedMINUSnonprimed = `primed` -`nonprimed`, 
+         primedMINUSunattended = `primed` -`not attended`, 
+         nonprimedMINUSunattended = `nonprimed` -`not attended`)%>%
+  dplyr::select(-`primed`, -`nonprimed`, -`not attended`)%>%
+  pivot_longer(cols = c(primedMINUSnonprimed, primedMINUSunattended, nonprimedMINUSunattended), 
+               names_to = "contrast", values_to = "difference")%>%
+  group_by(timewindow, contrast)%>%
+  nest()%>%
+  mutate(stats = map(data, ~broom::tidy(
+    t.test(difference ~ 1, data = .)
+  ))) %>%
+  mutate(
+    t_test_bf = map(data, ~{extractBF(ttestBF(x = .$difference, data = .,iterations=num.iter,rscale = sqrt(2)/2))})
+  )%>%
+  mutate(meanval = map(data, ~ mean(.x$difference))) %>%
+  mutate(std = map(data, ~ sd(.x$difference))) %>%
+  ungroup()%>%
+  dplyr::select(-data) %>%
+  unnest(cols = c(stats, t_test_bf, meanval, std))%>%
+  mutate(BF10 = bf, BF01 = 1/bf)%>%
+  dplyr::select(timewindow, contrast, meanval, std,  statistic, parameter, p.value, BF10, BF01)%>%
+  ungroup()%>%
+  group_by(timewindow)%>%
+   # mutate(p.value = p.adjust(p.value, method="holm")) %>% # none, holm
+  # mutate(p.value = p.adjust(p.value, method="bonferroni")) %>% # none, holm
+  mutate(p.value = p.adjust(p.value, method="fdr")) %>% # none, holm
+  # mutate(p.value = p.adjust(p.value, method="none")) %>% # none, holm
+  ungroup()%>%
+  mutate(Dz = `statistic`/sqrt(parameter +1))%>%
+  mutate(
+    p.value = cell_spec(ifelse(round(p.value,4)<.001,"< .001",round(p.value,4)), 
+                        color = ifelse(is.nan(p.value),"blue", ifelse(p.value < .05, "green", "red")),
+                        bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
+                        align = "center")
+  ) %>%
+  kbl(escape = F, digits = c(3,3,3,3,3,3,3,3,3), caption = c("modulation | contrasts | FDR-corrected")) %>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
+
+```
+
+
