@@ -51,6 +51,7 @@ library(mgcv)
 library(tidyverse)       # Tidy and flexible data manipulation
 library(marginaleffects) # Compute conditional and marginal effects
 library(patchwork)       # Combining ggplot objects
+library(gratia)
 
 
 source('C:/Dropboxdata/Dropbox/work/R-statistics/general_functions/RainCloudPlots/tutorial_R/R_rainclouds.R')
@@ -647,7 +648,7 @@ DATA_Trials %>%
   theme_minimal()
 
 ```
-
+<br> 
 
 ### Display of additiona analyses | displayed differently
 What are the distributions of presentation times for detected primed and nonprimed events?
@@ -686,7 +687,7 @@ ggplot(data_bin, aes(x = eventonsettimes, y = hit, color = eventtype2)) +
        title = "GAM Smoothed Hit Rates by Condition") +
   theme_minimal()
 ```
-
+<br> 
 
 ### Statistical test of additiona analyses
 #### Do we see differences in the distributions of hits for both cued targets across time?
@@ -695,7 +696,7 @@ full model: response ~ eventtype2 * eventonsettimes + (1 | participant)
 reduced model: response ~ eventtype2 + eventonsettimes + (1 | participant)
 
 <br> 
-```{r stat_hitxpresentationtime_distr, fig.show = "hide", warning = FALSE, fig.height=4, fig.width=10}
+```{r stat_hitxpresentationtime_distr, warning = FALSE, fig.height=4, fig.width=6}
 # Full model with interaction
 GLMHit_full <- DATA_Trials %>%
   mutate(response = as.factor(response)) %>%
@@ -722,7 +723,112 @@ GLMHit_full %>%
                     deparse(formula(GLMHit_full)))) %>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
 
+
+# Model with smoothers by condition
+model_gam_interaction <- DATA_Trials %>%
+  mutate(hit = ifelse(response == "hit", 1, 0),
+         eventtype2 = as.factor(eventtype2))%>%
+  gam(hit ~ eventtype2 + s(eventonsettimes, by = eventtype2) + s(participant, bs = "re"), 
+                 data = ., family = binomial)
+
+model_gam_null <- DATA_Trials %>%
+  mutate(hit = ifelse(response == "hit", 1, 0),
+         eventtype2 = as.factor(eventtype2))%>%
+  gam(hit ~ eventtype2 + s(eventonsettimes) + s(participant, bs = "re"), 
+                 data = .)
+
+plot(model_gam_interaction, pages = 1)
+# anova(model_gam_interaction)
+
+
+plot_predictions(model_gam_interaction, condition = c('eventonsettimes', 'eventtype2'),
+                 type = 'response') +
+      labs(y = "Predicted probability of a hit",
+           title = "Average smooth effect of eventonsettimes | GAM",
+           subtitle = "Per priming condition")
+
+
+# Likelihood ratio test
+anova( model_gam_null, model_gam_interaction, test = "Chisq") %>%
+  tidy()%>%
+  # as.data.frame() %>%
+  # mutate(model = c('reduced model','full model')) %>%
+  # dplyr::select(model, `Resid. Df`:`Pr(>Chi)`)%>%
+  kbl(escape = F, digits=3,
+      caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
+        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
+        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+
+
+# Plot difference between smooths (e.g., eventtype2 levels "A" and "B")
+diff_df <- difference_smooths(model_gam_interaction,
+                               smooth = "s(eventonsettimes)",
+                               comparison = c("eventtype2A", "eventtype2B"),
+                               n = 10)  # 200 points across the range
+
+# diff_df <- diff_df %>%
+#   mutate(
+#     .diff = plogis(.diff),
+#     .lower_c = plogis(.lower_ci),
+#     .upper_ci = plogis(.upper_ci)
+#   )
+
+ggplot(diff_df, aes(x = eventonsettimes, y = .diff)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Event onset time", y = "Difference in log-odds of Hitrate (nonprimed - primed)")
+
+
+# The y-axis shows the linear predictor — that is, the log-odds of the outcome ("hit") as predicted by the model.
+# 
+# This is before applying the inverse link function (which would convert it to a probability).
+# 
+# That means:
+# Y-axis = logit(P(hit))
+# 
+# Values:
+# 
+# 0 → 50% chance of a hit
+# 
+# Positive values → >50% chance
+# 
+# Negative values → <50% chance
+
+
+
+eventonset_grid <- seq(min(DATA_Trials$eventonsettimes),
+                       max(DATA_Trials$eventonsettimes),
+                       length.out = 200)
+
+new_target_primed <- data.frame(eventonsettimes = eventonset_grid,
+                    eventtype2 = "target_primed",  # match your factor levels exactly
+                    participant = 1)
+
+new_target_nonprimed <- data.frame(eventonsettimes = eventonset_grid,
+                    eventtype2 = "target_nonprimed",
+                    participant = 1)
+
+pred_target_primed <- predict(model_gam_interaction, newdata = new_target_primed, type = "response")
+pred_target_nonprimed <- predict(model_gam_interaction, newdata = new_target_nonprimed, type = "response")
+
+prob_diff_df <- data.frame(
+  eventonsettimes = eventonset_grid,
+  prob_target_primed = pred_target_primed,
+  prob_target_nonprimed = pred_target_nonprimed,
+  prob_diff = pred_target_primed - pred_target_nonprimed
+)
+
+ggplot(prob_diff_df, aes(x = eventonsettimes, y = prob_diff)) +
+  geom_line() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(y = "Difference in predicted probabilities (pred_target_primed - pred_target_nonprimed)",
+       x = "Event onset time")
+
 ```
+<br> 
+
 #### Control Analysis: Are there differences in the distributions of event times for both cueing conditons?
 
 <br> 
@@ -733,9 +839,18 @@ GLMEventType_full <- DATA_Trials %>%
 
 
 # Display the summary of the full model + Wald test
-summary(GLMEventType_full)
+# summary(GLMEventType_full)
+
+# Display the summary of the full model + Wald test
+GLMEventType_full %>%
+  tidy() %>%
+  kable(escape = F, digits=3,
+        caption = paste0("Likelihood ratio test via anova | display of full model:<br>", 
+                    deparse(formula(GLMEventType_full)))) %>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
 
 ```
+<br> 
 
 ### Display of additiona analyses | Reaction times
 What are the distributions of reaction times for primed and nonprimed events across the trial?
@@ -809,6 +924,21 @@ LMRT_full %>%
                     deparse(formula(LMRT_full)))) %>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
 
+# contrast of factor eventtype2
+emm_LMRT_full <- emmeans(LMRT_full, ~ eventtype2 | eventonsettimes,
+                         at = list(eventonsettimes = seq(min(DATA_Trials$eventonsettimes), max(DATA_Trials$eventonsettimes), length.out = 10)))
+contrast_results <- contrast(emm_LMRT_full, method = "pairwise", adjust = "tukey")
+# summary(contrast_results)
+results_df <- as.data.frame(contrast_results)
+significant_times <- subset(results_df, p.value < 0.05)
+
+ggplot(results_df, aes(x = eventonsettimes, y = estimate)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = estimate - SE, ymax = estimate + SE), alpha = 0.2) +
+  geom_point(data = significant_times, color = "red", size = 2) +
+  labs(title = "Difference between eventtype2 levels over time",
+       y = "Estimated difference (RT)", x = "Event onset time")
+
 
 
 # Model with smoothers by condition
@@ -837,10 +967,26 @@ plot_predictions(model_gam_interaction, condition = c('eventonsettimes', 'eventt
 
 # Likelihood ratio test
 anova( model_gam_null, model_gam_interaction, test = "Chisq") %>%
-  as.data.frame() %>%
+  tidy()%>%
+  # as.data.frame() %>%
+  # mutate(model = c('reduced model','full model')) %>%
+  # dplyr::select(model, `Resid. Df`:`Pr(>Chi)`)%>%
   kbl(escape = F, digits=3,
-        caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-                    paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
+      caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
+        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
+        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
+
+# Plot difference between smooths (e.g., eventtype2 levels "A" and "B")
+diff_df <- difference_smooths(model_gam_interaction,
+                               smooth = "s(eventonsettimes)",
+                               comparison = c("eventtype2A", "eventtype2B"),
+                               n = 10)  # 200 points across the range
+
+ggplot(diff_df, aes(x = eventonsettimes, y = .diff)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Event onset time", y = "Difference in RT (nonprimed - primed)")
 ```
