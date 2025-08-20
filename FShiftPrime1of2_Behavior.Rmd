@@ -46,6 +46,7 @@ library(cowplot)
 library(ggpol)
 library(psych)
 library(ggdist)
+library(dplyr)
 
 library(mgcv)
 library(tidyverse)       # Tidy and flexible data manipulation
@@ -121,7 +122,7 @@ DATA_Trials <- DataIn1%>%
 
 dat2plot1 <- DATA_Trials %>%
   group_by(participant, eventtype2)%>%
-  summarise(
+  dplyr::summarise(
     RT_Mean=mean(RT,na.rm=TRUE),
     RT_STD=sd(RT,na.rm=TRUE),
     Hitrate=(sum(response=='hit')/n())*100,
@@ -133,7 +134,7 @@ dat2plot1 <- DATA_Trials %>%
 dat2plot1a = DataIn1%>%
   filter(eventtype=="distractor") %>%
   group_by(participant, eventtype2)%>%
-  summarise(
+  dplyr::summarise(
     FArate=(sum(response=='FA_proper')/n())*100,
     FArate_adj1 = ifelse((sum(response=='FA_proper')/n())>0,
                          min(c(sum(response=='FA_proper')/n(), 1-(.5/n()))),
@@ -145,7 +146,9 @@ dat2plot <- merge(dat2plot1,dat2plot1a,by = "participant") %>% # adjust for HR a
     d_prime = qnorm(Hitrate_adj1)-qnorm(FArate_adj1),
     c = -0.5*(qnorm(Hitrate_adj1)+qnorm(FArate_adj1))
   ) %>%
-  rename(eventtype2=eventtype2.x)
+  dplyr::rename(eventtype2=eventtype2.x)
+
+
 
 
 dat2plot2 <- DataIn2 %>%
@@ -369,7 +372,7 @@ savefig
 ```{r disp_data_avg, warning = FALSE}
 dat2plot1 <- DATA_Trials %>%
   group_by(eventtype2, participant )%>%
-  summarise(
+  dplyr::summarise(
     RT_Mean=mean(RT,na.rm=TRUE),
     RT_STD=sd(RT,na.rm=TRUE),
     Hitrate=(sum(response=='hit')/n())*100,
@@ -381,7 +384,7 @@ dat2plot1 <- DATA_Trials %>%
 dat2plot1a = DataIn1%>%
   filter(eventtype=="distractor") %>%
   group_by(eventtype2, participant)%>%
-  summarise(
+  dplyr::summarise(
     FArate=(sum(response=='FA_proper')/n())*100,
     FArate_adj1 = ifelse((sum(response=='FA_proper')/n())>0,
                          min(c(sum(response=='FA_proper')/n(), 1-(.5/n()))),
@@ -393,11 +396,11 @@ dat2plot <- merge(dat2plot1,dat2plot1a,by = "participant") %>% # adjust for HR a
     d_prime = qnorm(Hitrate_adj1)-qnorm(FArate_adj1),
     c = -0.5*(qnorm(Hitrate_adj1)+qnorm(FArate_adj1))
   ) %>%
-  rename(eventtype2=eventtype2.x)
+  dplyr::rename(eventtype2=eventtype2.x)
 
 dat2plot  %>%
   group_by(eventtype2)%>%
-  summarise(N = n(), mean_RT = mean(RT_Mean), std_RT = sd(RT_Mean), mean_Hitrate = mean(Hitrate), std_Hitrate = sd(Hitrate),
+  dplyr::summarise(N = n(), mean_RT = mean(RT_Mean), std_RT = sd(RT_Mean), mean_Hitrate = mean(Hitrate), std_Hitrate = sd(Hitrate),
             mean_FArate = mean(FArate), std_FArate = sd(FArate), mean_dprime = mean(d_prime), std_dprime = sd(d_prime)) %>%
   kable(escape = F, digits = c(3,3,3,3,3,3,3,3,3,3), caption = c("descriptives of behavioral measures")) %>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
@@ -428,13 +431,13 @@ dat2plot2 <- DataIn2 %>%
 
 dat2plot1 <- DATA_Trials %>%
   group_by(participant,eventtype2)%>%
-  summarise(RT_Mean=mean(RT,na.rm=TRUE),RT_STD=sd(RT,na.rm=TRUE),Hitrate=(sum(response=='hit')/n())*100)
+  dplyr::summarise(RT_Mean=mean(RT,na.rm=TRUE),RT_STD=sd(RT,na.rm=TRUE),Hitrate=(sum(response=='hit')/n())*100)
 
 dat2plot2 <- DataIn2 %>%
   mutate(`FA_all`= FA + `FA_proper`)%>%
   # dplyr::select(-FA)%>%
   dplyr::select(-FA_all)%>%
-  rename(participant=subject)
+  dplyr::rename(participant=subject)
 
 dat2plot_all <- merge(dat2plot1,dat2plot2,by = "participant") %>% # adjust for HR and FR of 0 or 1
   mutate(
@@ -560,11 +563,12 @@ dat2plot_all %>%
         caption = c("Hitrate | modulation by target type (primed vs nonprimed) | t-tests of difference")) %>%
   kable_styling("striped", full_width = T,bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
 ```
+<br> 
 
-## Additional analyses
+## Time-resolved Analysis
 
-
-### Display of additiona analyses
+### Hitrates
+#### Display of hit-rate distributions
 What are the distributions of presentation times for detected primed and nonprimed events?
 
 <br> 
@@ -634,24 +638,24 @@ DATA_Trials %>%
   ggtitle("presentation times separate for cued targets")
 
 
-DATA_Trials %>%
-  filter(response=='hit')%>%
-  ggplot(aes(x = eventonsettimes, y = RT, color = eventtype2)) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "loess", se = TRUE, span = 0.3) +    # kernel smoothed average
-  labs(
-    title = "Smoothed Average Reaction Times",
-    x = "Presentation Time (ms)",
-    y = "Reaction Time (ms)",
-    color = "Condition"
-  ) +
-  theme_minimal()
+# DATA_Trials %>%
+#   filter(response=='hit')%>%
+#   ggplot(aes(x = eventonsettimes, y = RT, color = eventtype2)) +
+#   stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+#   geom_smooth(method = "loess", se = TRUE, span = 0.3) +    # kernel smoothed average
+#   labs(
+#     title = "Smoothed Average Reaction Times",
+#     x = "Presentation Time (ms)",
+#     y = "Reaction Time (ms)",
+#     color = "Condition"
+#   ) +
+#   theme_minimal()
 
 ```
 <br> 
 
-### Display of additiona analyses | displayed differently
-What are the distributions of presentation times for detected primed and nonprimed events?
+#### Display of smoothed Hit rates across time and experimental conditions
+What are the time courses of  detected primed and nonprimed events?
 
 <br> 
 
@@ -667,33 +671,35 @@ data_avg <- data_bin %>%
 ggplot(data_bin, aes(x = eventonsettimes, y = hit, color = eventtype2)) +
   stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
   geom_smooth(method = "loess", span = 0.3, se = TRUE) +
-  labs(x = "Event Onset Time", y = "Hit Rate", 
-       title = "Smoothed Hit Rates Over Time by Condition") +
+  labs(x = "Event Onset Time", y = "Probability of hits", 
+       title = "Smoothed Probability of hits | single sub data") +
   theme_minimal()
 
-ggplot(data_avg, aes(x = eventonsettimes, y = hit_rate, color = eventtype2)) +
-  # geom_line(alpha = 0.4) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "loess", se = TRUE, span = 0.3) +
-  labs(x = "Event Onset Time", y = "Hit Rate", 
-       title = "Smoothed Hit Rates Over Time by Condition") +
-  theme_minimal()
+# ggplot(data_avg, aes(x = eventonsettimes, y = hit_rate, color = eventtype2)) +
+#   # geom_line(alpha = 0.4) +
+#   stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+#   geom_smooth(method = "loess", se = TRUE, span = 0.3) +
+#   labs(x = "Event Onset Time", y = "Hit Rate", 
+#        title = "Smoothed Hit Rates Over Time by Condition | averaged across subjects hit rates") +
+#   theme_minimal()
 
 
 ggplot(data_bin, aes(x = eventonsettimes, y = hit, color = eventtype2)) +
   stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs", k = 10), se = TRUE) +
-  labs(x = "Event Onset Time", y = "Hit Rate", 
-       title = "GAM Smoothed Hit Rates by Condition") +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +
+  labs(x = "Event Onset Time", y = "Probability of hits", 
+       title = "GAM Smoothed Probability of Hits by Condition") +
   theme_minimal()
 ```
 <br> 
 
-### Statistical test of additiona analyses
-#### Do we see differences in the distributions of hits for both cued targets across time?
+#### Statistical test for time-resolved analysis of probability of hits/hit rates
+*Do probabilities of Hits for primed and non-primed events differ (differently) across time?*
 
 full model: response ~ eventtype2 * eventonsettimes + (1 | participant)
 reduced model: response ~ eventtype2 + eventonsettimes + (1 | participant)
+
+Test rationale: do these models differ significantly and does the interaction term thus allow for a better explanation of the data.
 
 <br> 
 ```{r stat_hitxpresentationtime_distr, warning = FALSE, fig.height=4, fig.width=6}
@@ -710,7 +716,7 @@ GLMHit_reduced <- DATA_Trials %>%
 # Likelihood ratio test
 anova( GLMHit_reduced, GLMHit_full, test = "Chisq") %>%
   as.data.frame() %>%
-  kable(escape = F, digits=3,
+  kable(escape = F, digits=6,
         caption = paste0("Likelihood ratio test via anova | comparing full and reduced model:<br>", 
                     deparse(formula(GLMHit_full))))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
@@ -728,14 +734,17 @@ GLMHit_full %>%
 model_gam_interaction <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
          eventtype2 = as.factor(eventtype2))%>%
-  gam(hit ~ eventtype2 + s(eventonsettimes, by = eventtype2) + s(participant, bs = "re"), 
+  gam(hit ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant, 
                  data = ., family = binomial)
+# coef(model_gam_interaction)
+
+
 
 model_gam_null <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
          eventtype2 = as.factor(eventtype2))%>%
-  gam(hit ~ eventtype2 + s(eventonsettimes) + s(participant, bs = "re"), 
-                 data = .)
+  gam(hit ~ eventtype2 + s(eventonsettimes, bs = "cs") + participant, 
+                 data = ., family = binomial)
 
 plot(model_gam_interaction, pages = 1)
 # anova(model_gam_interaction)
@@ -829,30 +838,9 @@ ggplot(prob_diff_df, aes(x = eventonsettimes, y = prob_diff)) +
 ```
 <br> 
 
-#### Control Analysis: Are there differences in the distributions of event times for both cueing conditons?
+### Reaction Times
 
-<br> 
-```{r stat_hitxpresentationtime_distr_control, fig.show = "hide", warning = FALSE, fig.height=4, fig.width=10}
-GLMEventType_full <- DATA_Trials %>%
-  mutate(eventtype2 = as.factor(eventtype2)) %>%
-  glmer(eventtype2 ~ eventonsettimes + (1 | participant),data=., family = binomial)
-
-
-# Display the summary of the full model + Wald test
-# summary(GLMEventType_full)
-
-# Display the summary of the full model + Wald test
-GLMEventType_full %>%
-  tidy() %>%
-  kable(escape = F, digits=3,
-        caption = paste0("Likelihood ratio test via anova | display of full model:<br>", 
-                    deparse(formula(GLMEventType_full)))) %>%
-  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
-
-```
-<br> 
-
-### Display of additiona analyses | Reaction times
+#### Display of smoothed reaction times across time
 What are the distributions of reaction times for primed and nonprimed events across the trial?
 
 <br> 
@@ -875,7 +863,7 @@ DATA_Trials %>%
   filter(response=='hit')%>%
   ggplot(aes(x = eventonsettimes, y = RT, color = eventtype2)) +
   stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs",  k = 10), se = TRUE) +    # kernel smoothed average
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +    # kernel smoothed average
   labs(
     title = "GAM Smoothed Average Reaction Times",
     x = "eventonsettimes (s)",
@@ -889,12 +877,12 @@ DATA_Trials %>%
 
 ```
 
-### Statistical test of additiona analyses
-#### Do we see differences in the distributions of reaction times for primed and nonprimed events across the trial?
+#### Statistical test for time-resolved analysis of reaction times
+*Do reaction times for hits for primed and non-primed events differ (differently) across time?*
 
-full model: response ~ eventtype2 * eventonsettimes + (1 | participant)
+full model: RT ~ eventtype2 * eventonsettimes + (1 | participant)
 
-reduced model: response ~ eventtype2 + eventonsettimes + (1 | participant)
+reduced model: RT ~ eventtype2 + eventonsettimes + (1 | participant)
 
 <br> 
 ```{r stat_RTxpresentationtime_distr,  warning = FALSE, fig.height=4, fig.width=6}
@@ -945,13 +933,13 @@ ggplot(results_df, aes(x = eventonsettimes, y = estimate)) +
 model_gam_interaction <- DATA_Trials %>%
   filter(response=='hit')%>%
   mutate(eventtype2 = as.factor(eventtype2))%>%
-  gam(RT ~ eventtype2 + s(eventonsettimes, by = eventtype2) + s(participant, bs = "re"), 
+  gam(RT ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant, 
                  data = .)
 
 model_gam_null <- DATA_Trials %>%
   filter(response=='hit')%>%
   mutate(eventtype2 = as.factor(eventtype2))%>%
-  gam(RT ~ eventtype2 + s(eventonsettimes) + s(participant, bs = "re"), 
+  gam(RT ~ eventtype2 + s(eventonsettimes, bs = "cs") +participant, 
                  data = .)
 
 plot(model_gam_interaction, pages = 1)
@@ -989,4 +977,323 @@ ggplot(diff_df, aes(x = eventonsettimes, y = .diff)) +
   geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), alpha = 0.3) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   labs(x = "Event onset time", y = "Difference in RT (nonprimed - primed)")
+```
+
+<br> 
+
+### False Alarm Rates
+
+#### Display of smoothed False Alarm Rates across time
+What are the distributions of false alarm rates across the trial?
+
+<br> 
+
+```{r disp_FA_X_TIME, fig.height=4, fig.width=7, warning = FALSE}
+DATA_FA <- DataIn1%>%
+  filter(eventtype=="distractor")%>%
+  mutate(FA = ifelse(response == "FA_proper", 1, 0))
+
+ggplot(DATA_FA,aes(x = eventonsettimes, y = FA)) +
+  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+  geom_smooth(method = "loess", se = TRUE, span = 0.3) +    # kernel smoothed average
+  labs(
+    title = "Smoothed FA probabilities",
+    x = "eventonsettimes (s)",
+    y = "FA probability"
+  ) +
+  theme_minimal()
+
+ggplot(DATA_FA, aes(x = eventonsettimes, y = FA)) +
+  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +
+  labs(x = "Event Onset Time", y = "FA probability", 
+       title = "GAM Smoothed Probability of FAs") +
+  theme_minimal()
+```
+<br> 
+
+#### Statistical test for time-resolved analysis of FArate
+*Does the probability of FAs differ across time?*
+
+full model: FA ~  eventonsettimes + (1 | participant)
+reduced model: FA ~  1 + (1 | participant)
+
+Test rationale: do these models differ significantly and does the interaction term thus allow for a better explanation of the data.
+
+<br> 
+```{r stat_FA_X_TIME_test, warning = FALSE, fig.height=4, fig.width=6}
+# Full model with factor
+GLMHit_full <- DataIn1%>%
+  filter(eventtype=="distractor")%>%
+  mutate(response = as.factor(response)) %>%
+  glmer(response ~ eventonsettimes + (1 | participant),data=., family = binomial)
+
+# Reduced model intercept model
+GLMHit_reduced <- DataIn1%>%
+  filter(eventtype=="distractor")%>%
+  mutate(response = as.factor(response)) %>%
+  glmer(response ~ 1 + (1 | participant),data=., family = binomial)
+
+# Likelihood ratio test
+anova( GLMHit_reduced, GLMHit_full, test = "Chisq") %>%
+  as.data.frame() %>%
+  kable(escape = F, digits=3,
+        caption = paste0("Likelihood ratio test via anova | comparing full and reduced model:<br>", 
+                    deparse(formula(GLMHit_full))))%>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+
+# Display the summary of the full model + Wald test
+GLMHit_full %>%
+  tidy() %>%
+  kable(escape = F, digits=3,
+        caption = paste0("Likelihood ratio test via anova | comparing full and reduced model:<br>", 
+                    deparse(formula(GLMHit_full)))) %>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
+
+
+# Model with smoothers by condition
+model_gam_factor <- DataIn1%>%
+  filter(eventtype=="distractor")%>%
+  mutate(FA = ifelse(response == "FA_proper", 1, 0))%>%
+  gam(FA ~ s(eventonsettimes) + s(participant, bs = "cs"), 
+                 data = ., family = binomial)
+
+model_gam_null <-DataIn1%>%
+  filter(eventtype=="distractor")%>%
+  mutate(FA = ifelse(response == "FA_proper", 1, 0))%>%
+  gam(FA ~ s(participant, bs = "cs"), 
+                 data = ., family = binomial)
+
+plot(model_gam_factor, pages = 1)
+# anova(model_gam_interaction)
+
+
+plot_predictions(model_gam_factor, condition = 'eventonsettimes',
+                 type = 'response') +
+      labs(y = "Predicted probability of a FA",
+           title = "Average smooth effect of eventonsettimes | GAM")
+
+
+# Likelihood ratio test
+anova( model_gam_null, model_gam_factor, test = "Chisq") %>%
+  tidy()%>%
+  # as.data.frame() %>%
+  # mutate(model = c('reduced model','full model')) %>%
+  # dplyr::select(model, `Resid. Df`:`Pr(>Chi)`)%>%
+  kbl(escape = F, digits=3,
+      caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
+        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
+        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+
+
+
+
+```
+
+<br> 
+
+### Control Analysis: Are there differences in the distributions of event times for both cueing conditons?
+
+Idea: can we really compare primed and non-primed events? Are their distributions of presentation times comparable?
+
+Rationale: Can the eventtype be predicted by the presentation time? If presentation time was comparable, it shouldn't be a predictor.
+
+eventtype2 ~ eventonsettimes + (1 | participant)
+
+<br> 
+```{r stat_hitxpresentationtime_distr_control, fig.show = "hide", warning = FALSE, fig.height=4, fig.width=10}
+GLMEventType_full <- DATA_Trials %>%
+  mutate(eventtype2 = as.factor(eventtype2)) %>%
+  glmer(eventtype2 ~ eventonsettimes + (1 | participant),data=., family = binomial)
+
+
+# Display the summary of the full model + Wald test
+# summary(GLMEventType_full)
+
+# Display the summary of the full model + Wald test
+GLMEventType_full %>%
+  tidy() %>%
+  kable(escape = F, digits=3,
+        caption = paste0("Likelihood ratio test via anova | display of full model:<br>", 
+                    deparse(formula(GLMEventType_full)))) %>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
+
+```
+
+<br> 
+
+### Control Analysis: Is the sequential modulation simply capturing a sequential strategy in shifting attention by the to be learned cue?
+
+Idea: Can the sequential modulation be solely attributed to the functional classification primed vs non-primed? Or could an alternative account state that the sequential modulation is capturing a sequential strategy in shifting attention by the to be learned cue? Does it even make a difference? If it is learning related, maybe the effect is time-on-task dependent and initially higher than later on.
+
+
+Rationale: Do a time-on-task resolved analysis
+
+eventtype2 ~ eventonsettimes + (1 | participant)
+
+<br> 
+```{r stat_control_learning, fig.height=4, fig.width=8, warning = FALSE}
+data_bin <- DATA_Trials %>%
+  mutate(hit = ifelse(response == "hit", 1, 0))%>%
+  group_by(participant)%>%
+  # mutate(time_bin = cut(trialnumber,
+  #                       breaks = seq(0, max(trialnumber), by = 2),
+  #                       labels = FALSE)) %>%
+  mutate(time_bin = as.factor(ntile(trialnumber, 2))) %>% 
+  ungroup()
+
+
+
+ggplot(data_bin, aes(x = eventonsettimes, y = hit, color = eventtype2)) +
+  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+  geom_smooth(method = "loess", span = 0.3, se = TRUE) +
+  facet_grid(.~time_bin)+
+  labs(x = "Event Onset Time", y = "Probability of hits", 
+       title = "Smoothed Probability of hits | single sub data") +
+  theme_minimal()
+
+# ggplot(data_avg, aes(x = eventonsettimes, y = hit_rate, color = eventtype2)) +
+#   # geom_line(alpha = 0.4) +
+#   stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+#   geom_smooth(method = "loess", se = TRUE, span = 0.3) +
+#   labs(x = "Event Onset Time", y = "Hit Rate", 
+#        title = "Smoothed Hit Rates Over Time by Condition | averaged across subjects hit rates") +
+#   theme_minimal()
+
+
+ggplot(data_bin, aes(x = eventonsettimes, y = hit, color = eventtype2)) +
+  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +
+  facet_grid(.~time_bin)+
+  labs(x = "Event Onset Time", y = "Probability of hits", 
+       title = "GAM Smoothed Probability of Hits by Condition") +
+  theme_minimal()
+
+
+
+data_bin %>%
+  filter(response=='hit')%>%
+  ggplot(aes(x = eventonsettimes, y = RT, color = eventtype2)) +
+  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+  geom_smooth(method = "loess", se = TRUE, span = 0.3) +    # kernel smoothed average
+  facet_grid(.~time_bin)+
+  labs(
+    title = "Smoothed Average Reaction Times",
+    x = "eventonsettimes (s)",
+    y = "Reaction Time (ms)",
+    color = "Condition"
+  ) +
+  theme_minimal()
+
+data_bin %>%
+  filter(response=='hit')%>%
+  ggplot(aes(x = eventonsettimes, y = RT, color = eventtype2)) +
+  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +    # kernel smoothed average
+  facet_grid(.~time_bin)+
+  labs(
+    title = "GAM Smoothed Average Reaction Times",
+    x = "eventonsettimes (s)",
+    y = "Reaction Time (ms)",
+    color = "Condition"
+  ) +
+  theme_minimal()
+
+
+
+# hit rates
+# Model with smoothers by condition
+model_gam_null <- data_bin%>%
+  mutate(eventtype2 = as.factor(eventtype2))%>%
+  gam(hit ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant, 
+                 data = ., family = binomial)
+# coef(model_gam_interaction)
+
+
+
+model_gam_timeOntask <- data_bin%>%
+  mutate(
+    eventtype2 = as.factor(eventtype2),
+    time_bin   = as.factor(time_bin),
+    eventtype2_timebin = interaction(eventtype2, time_bin, drop = TRUE)
+  ) %>%
+  gam(hit ~ eventtype2*time_bin + 
+        s(eventonsettimes, by = eventtype2_timebin, bs = "cs") + 
+        participant, 
+                 data = ., family = binomial)
+
+plot(model_gam_timeOntask, pages = 1)
+# anova(model_gam_interaction)
+
+
+plot_predictions(model_gam_timeOntask, condition = c('eventonsettimes', 'eventtype2_timebin'),
+                 type = 'response') +
+      labs(y = "Predicted probability of a hit",
+           title = "Average smooth effect of eventonsettimes | GAM",
+           subtitle = "Per priming condition")
+
+
+# Likelihood ratio test
+anova( model_gam_null, model_gam_timeOntask, test = "Chisq") %>%
+  tidy()%>%
+  # as.data.frame() %>%
+  # mutate(model = c('reduced model','full model')) %>%
+  # dplyr::select(model, `Resid. Df`:`Pr(>Chi)`)%>%
+  kbl(escape = F, digits=3,
+      caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
+        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
+        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+
+
+
+
+# reaction times
+# Model with smoothers by condition
+model_gam_null <- data_bin%>%
+  filter(response=='hit')%>%
+  mutate(eventtype2 = as.factor(eventtype2))%>%
+  gam(RT ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant, 
+                 data = .)
+# coef(model_gam_interaction)
+
+
+
+model_gam_timeOntask <- data_bin%>%
+  filter(response=='hit')%>%
+  mutate(
+    eventtype2 = as.factor(eventtype2),
+    time_bin   = as.factor(time_bin),
+    eventtype2_timebin = interaction(eventtype2, time_bin, drop = TRUE)
+  ) %>%
+  gam(RT ~ eventtype2*time_bin + 
+        s(eventonsettimes, by = eventtype2_timebin, bs = "cs") + 
+        participant, 
+                 data = .)
+
+
+plot(model_gam_timeOntask, pages = 1)
+# anova(model_gam_interaction)
+
+
+plot_predictions(model_gam_timeOntask, condition = c('eventonsettimes', 'eventtype2_timebin'),
+                 type = 'response') +
+      labs(y = "RT",
+           title = "Average smooth effect of eventonsettimes | GAM",
+           subtitle = "Per priming condition")
+
+
+# Likelihood ratio test
+anova( model_gam_null, model_gam_timeOntask, test = "Chisq") %>%
+  tidy()%>%
+  # as.data.frame() %>%
+  # mutate(model = c('reduced model','full model')) %>%
+  # dplyr::select(model, `Resid. Df`:`Pr(>Chi)`)%>%
+  kbl(escape = F, digits=3,
+      caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
+        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
+        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+
 ```
