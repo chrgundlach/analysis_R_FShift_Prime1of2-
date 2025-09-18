@@ -153,7 +153,7 @@ ggplot(dat_plot, aes(x=RT)) +
   stat_dots(position = "dodgejust") +
   labs(
     title = "Reaction times for hits",
-    subtitle = "all trials for N = 20 subjects",
+    subtitle = "all trials for N = 27 subjects",
     x = "RT in ms",
     y = "density"
   )+ 
@@ -207,7 +207,7 @@ plot2 <-
                      aes(color=eventtype2)) +
   theme(axis.text.y=element_blank(),axis.ticks.y=element_blank(), axis.title.y = element_blank())+
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
-  scale_x_continuous(name="RT in ms", breaks=c(200,400,600,800,1000,1200), labels=waiver(), limits=c(200,1200))
+  scale_x_continuous(name="RT in ms", breaks=c(200,400,600,800,1000,1200), labels=waiver(), limits=c(200,1300))
   # scale_fill_manual(name = "cue", values=c("#F1831A", "#293C4A", "#198A83")) +
   # scale_color_manual(name = "cue", values=c("#F1831A", "#293C4A", "#198A83"))
   
@@ -656,6 +656,7 @@ g<-ggplot(bestmodel.ef.ef_draws_PRIME_contr, aes( x = .value)) +
     position = "dodgejust",
   ) +
   geom_vline(xintercept = 0)+
+  scale_fill_manual(values=c("mediumpurple3")) +
   # scale_fill_brewer(palette = "Reds")+
   labs(
     title = "Average marginal effect in ms", 
@@ -770,6 +771,7 @@ g<-ggplot(bestmodel.ef.slope_interaction, aes( x = .value)) +
     position = "dodgejust",
   ) +
   geom_vline(xintercept = 0)+
+  scale_fill_manual(values=c("mediumpurple3")) +
   # scale_fill_brewer(palette = "Reds")+
   labs(
     title = "Contrast | marginal effect in ms", 
@@ -794,7 +796,7 @@ The procedure is nicely described here https://www.andrewheiss.com/blog/2021/11/
 
 We first display the effects of the model...but they are hard to interprete as they are probably on a log scale. But who knows.
 
-```{r PrimeCon_x_PresTime_GAM marginal effects disp effects,  fig.height=3.5, fig.width=5,  warning = FALSE, message=FALSE, eval = TRUE}
+```{r PrimeCon_x_PresTime_GAM marginal effects disp effects,  fig.height=3.5, fig.width=5,warning = FALSE, message=FALSE, eval = TRUE}
 # based on https://www.andrewheiss.com/blog/2021/11/10/ame-bayes-re-guide/
 # which model to use?
 # bestmodel.ef.model <- fit_PrimeCon_x_PresTime
@@ -982,6 +984,7 @@ g<-ggplot(bestmodel.ef.ef_draws_PRIME_contr, aes( x = .value)) +
     position = "dodgejust",
   ) +
   geom_vline(xintercept = 0)+
+  scale_fill_manual(values=c("mediumpurple3")) +
   # scale_fill_brewer(palette = "Reds")+
   labs(
     title = "Average marginal effect in ms", 
@@ -1040,6 +1043,32 @@ ggplot(bestmodel.ef.tidy_exppred2, aes(x = eventonsettimes, y = .epred, fill=eve
   theme(legend.position = "bottom")
 
 
+# plot difference scores across draws
+bestmodel.ef.tidy_exppred2b <- bestmodel.ef.tidy_exppred2 %>%
+  ungroup()%>%
+  dplyr::select(eventtype2,eventonsettimes,subject,.draw,.epred,-".row")%>%
+  pivot_wider(names_from = eventtype2, values_from = ".epred")%>%
+  mutate(diff_primed_nonprimed = target_primed-target_nonprimed) %>%
+  dplyr::select(-target_primed,-target_nonprimed)%>%
+  mutate(contrast = "primed - nonprimed")
+  
+
+theme_set(theme_bw())
+ggplot(bestmodel.ef.tidy_exppred2b, aes(x = eventonsettimes, y = diff_primed_nonprimed)) +
+  stat_lineribbon(.width = c(0.95, 1),aes(fill = contrast, fill_ramp = after_stat(level)), alpha = 0.5) + 
+  # scale_fill_brewer(palette = "Reds") +
+  scale_fill_manual(values=c("mediumpurple3")) +
+  # scale_color_manual(values=c("red3", "steelblue"))+
+  # facet_grid(.~eventtype2)+
+  labs(x = "event onset times", y = "predicted RT difference",
+       # fill = "Credible interval",
+       title = "Marginal Means of differences", 
+       subtitle = "for all draws of the model",) +
+  # ylim(c(400,1300))+
+  theme(legend.position = "bottom")
+
+
+
 # now lets get the slop of the modulation by alpha
 bestmodel.ef.slope_interaction <- bestmodel.ef.model %>% 
   emtrends(~ eventtype2, # 1 means, we want the average slop
@@ -1096,9 +1125,10 @@ g<-ggplot(bestmodel.ef.slope_interaction, aes( x = .value)) +
     position = "dodgejust",
   ) +
   geom_vline(xintercept = 0)+
+  scale_fill_manual(values=c("mediumpurple3")) +
   # scale_fill_brewer(palette = "Reds")+
   labs(
-    title = "Contrast | marginal effect in ms", 
+    title = "Contrast of estimated slopes", 
     subtitle = "based on medians for all draws of the model",
     fill_ramp = "interval",
     x = "predicted difference in ms",
