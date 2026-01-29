@@ -2429,7 +2429,7 @@ ggplot(ccf_df, aes(x = Lag_s, y = Correlation)) +
   theme_minimal() +
   labs(
     title = "Cross-Correlation: SSVEP vs. Behavior",
-    subtitle = c(subtitle = paste("Peak correlation of", round(max_cor, 2), "at", max_lag_s, "s lag with p = ", ccf_df$p_val[which.max(ccf_df$Correlation)],
+    subtitle = c(subtitle = paste("Peak correlation of", round(max_cor, 3), "at", max_lag_s, "s lag with p = ", ccf_df$p_val[which.max(ccf_df$Correlation)],
                                   "\nGrey ribbon = 95% null distribution (permutation-based)")),
     x = "Lag (s) [Shift of Behavior relativ to SSVEP]",
     y = "Cross-Correlation (r)"
@@ -2773,7 +2773,7 @@ ggplot(ccf_df_RT, aes(x = Lag_s, y = Correlation)) +
   theme_minimal() +
   labs(
     title = "Cross-Correlation: SSVEP vs. Behavior",
-    subtitle = c(subtitle = paste("Peak correlation of", round(max_cor, 2), "at", max_lag_s, "s lag with p = ", ccf_df_RT$p_val[which.max(abs(ccf_df_RT$Correlation))],
+    subtitle = c(subtitle = paste("Peak correlation of", round(max_cor, 3), "at", max_lag_s, "s lag with p = ", ccf_df_RT$p_val[which.max(abs(ccf_df_RT$Correlation))],
                                   "\nGrey ribbon = 95% null distribution (permutation-based)")),
     x = "Lag (s) [Shift of Behavior relativ to SSVEP]",
     y = "Cross-Correlation (r)"
