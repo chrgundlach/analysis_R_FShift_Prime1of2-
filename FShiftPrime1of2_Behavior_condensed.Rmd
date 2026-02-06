@@ -15,53 +15,37 @@ output:
 
 
 ```{r load_package, message = FALSE, warning = FALSE}
+rm(list=ls()) # clear environment
+
 library(lme4)
 library(readxl)
 library(tidyverse)
-# library(data.table)
-# library(afex)
-# library(broom)
-# library(apa)
 library(kableExtra)
-# library(lmerTest)
-# library(pbkrtest)
-# library(effects)
-# library(visreg)
-# library(sjPlot)
 library(broom.mixed)
-# library(pander)
-# library(mediation)
-# library(multcomp)
-# library(multcompView)
-# library(magrittr)
+
 library(multipanelfigure)
 library(ggbeeswarm)
-# library(lsmeans)
+
 library(BayesFactor)
 library(ggpubr)
-# library(gpairs)
-# library(DescTools)
+
 library(cowplot)
-# library(ggpol)
-# library(psych)
+
 library(ggdist)
-# library(dplyr)
+
 # 
 library(mgcv)
 library(tidyverse)       # Tidy and flexible data manipulation
-# library(marginaleffects) # Compute conditional and marginal effects
-# library(patchwork)       # Combining ggplot objects
-# library(gratia)
 # 
 library(ggeffects)
 # 
 library(report)
 library(emmeans)
 
+library(forecast)
 
-source('C:/Dropboxdata/Dropbox/work/R-statistics/general_functions/RainCloudPlots/tutorial_R/R_rainclouds.R')
 
-
+source('.../R_rainclouds.R')
 
 
 
@@ -70,6 +54,7 @@ source('C:/Dropboxdata/Dropbox/work/R-statistics/general_functions/RainCloudPlot
 # 
 DATAPath1 = "data_in/behavior_events.csv"
 DATAPath2 = "data_in/behavior_FAs.csv"
+DATAPath3 = "data_in/Gabor_TimeCourses.csv"
 
 
 
@@ -79,9 +64,9 @@ options(scipen=1, digits=5)
 ```
 <style type="text/css">
 .main-container {
-  max-width: 1800px !important;
-  margin-left: auto;
-  margin-right: auto;
+max-width: 1800px !important;
+margin-left: auto;
+margin-right: auto;
 }
 </style>
 
@@ -90,24 +75,43 @@ options(scipen=1, digits=5)
 <br>  
 
 1.  Read in data: 
-    + `r DATAPath1`
-    + `r DATAPath1`
-    
++ `r DATAPath1`
++ `r DATAPath1`
+
 <br>  
 
 ```{r load_data,results = "hide", fig.show = "hide", warning = FALSE}
 sub_sample = as.factor(c(5)) # no ssvep people discarded
+# sub_sample = c() # no ssvep people discarded
 
 
 # read in data
 DataIn1 <- read_csv(DATAPath1) %>%
-  filter(!participant %in% sub_sample)
+  filter(!participant %in% sub_sample) %>%
+  mutate(eventtype2 = recode(
+    eventtype2,
+    "target_primed"     = "target_stimuluscued",
+    "target_nonprimed"  = "target_topdowncued"
+  ))
 DataIn2 <- read_csv(DATAPath2)%>%
   filter(!subject %in% sub_sample)
+DataIn3 <- read_delim(DATAPath3, delim =";")%>%
+  filter(!participant %in% sub_sample)%>%
+  mutate(condition = as.factor(condition)) %>%
+  mutate(time = time/1000) %>% # data should be in s
+  mutate(condition = recode(
+    condition,
+    "primed"     = "stimuluscued",
+    "nonprimed"  = "topdowncued"
+  ))
 head(DataIn1)
 str(DataIn1)
 head(DataIn2)
 str(DataIn2)
+head(DataIn3)
+str(DataIn3)
+
+#
 
 
 ```
@@ -139,255 +143,6 @@ summary(as.data.frame(r))
 
 ```
 
-## Illustrate behavioral data
-
-<br>  
-
-```{r plot_data_avg, results = "hide",  fig.height=6, fig.width=7, warning = FALSE}
-
-dat2plot1 <- DATA_Trials %>%
-  group_by(participant, eventtype2)%>%
-  dplyr::summarise(
-    RT_Mean=mean(RT,na.rm=TRUE),
-    RT_STD=sd(RT,na.rm=TRUE),
-    Hitrate=(sum(response=='hit')/n())*100,
-    Hitrate_adj1 = ifelse((sum(response=='hit')/n())>0,
-                         min(c(sum(response=='hit')/n(), 1-(.5/n()))),
-                         .5/n()), # according to Stanislaw H, Todorov N, Behav Res Meth (1999) 31, 137-149, "1/2N rule" or
-    Hitrate_adj2 = (sum(response=='hit')+0.5)/(n()+1))%>% # loglinear approach (Hautus, 1995)
-    ungroup()
-dat2plot1a = DataIn1%>%
-  filter(eventtype=="distractor") %>%
-  group_by(participant, eventtype2)%>%
-  dplyr::summarise(
-    FArate=(sum(response=='FA_proper')/n())*100,
-    FArate_adj1 = ifelse((sum(response=='FA_proper')/n())>0,
-                         min(c(sum(response=='FA_proper')/n(), 1-(.5/n()))),
-                         .5/n()), # according to Stanislaw H, Todorov N, Behav Res Meth (1999) 31, 137-149, "1/2N rule" or
-    FArate_adj2 = (sum(response=='FA_proper')+0.5)/(n()+1)) %>% # loglinear approach (Hautus, 1995))
-  ungroup()
-dat2plot <- merge(dat2plot1,dat2plot1a,by = "participant") %>% # adjust for HR and FR of 0 or 1
-  mutate(
-    d_prime = qnorm(Hitrate_adj1)-qnorm(FArate_adj1),
-    c = -0.5*(qnorm(Hitrate_adj1)+qnorm(FArate_adj1))
-  ) %>%
-  dplyr::rename(eventtype2=eventtype2.x)
-
-
-
-
-dat2plot2 <- DataIn2 %>%
-  mutate(`FA_all`= FA + `FA_proper`)%>%
-  # dplyr::select(-FA)%>%
-  dplyr::select(-FA_all)%>%
-  pivot_longer(c(-subject ),names_to = "FA_type", values_to = "number")%>%
-  filter(FA_type=='FA_proper' | FA_type=='FA')
-
-theme_set(theme_bw())
-plot1 <- ggplot(dat2plot, aes(x = 1, y = RT_Mean)) +
-  # geom_hline(yintercept=0, show.legend = FALSE) +
-  geom_beeswarm(cex=4.5, size = 5,alpha=0.4)+
-  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y..), geom='errorbar', width=0.9, size=1.5) +
-  # scale_fill_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  # scale_color_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  ylab(expression(paste("reaction time in ms")))+
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())
-
-plot2 <- ggplot(dat2plot, aes(x = 1, y = Hitrate)) +
-  # geom_hline(yintercept=0, show.legend = FALSE) +
-  geom_beeswarm(cex=4.5, size = 5,alpha=0.4)+
-  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y..), geom='errorbar', width=0.9, size=1.5) +
-  # scale_fill_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  # scale_color_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange"))
-  ylab(expression(paste("hit rate in %")))+
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())
-
-plot3 <- ggplot(dat2plot2, aes(x = FA_type, y = number, color = FA_type)) +
-  # geom_hline(yintercept=0, show.legend = FALSE) +
-  geom_beeswarm(cex=3.5, size = 5,alpha=0.4)+
-  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y..), geom='errorbar', width=0.9, size=1.5) +
-  scale_fill_manual("FA type", values=c("grey40", "black"),labels = c("to other","to distractor")) +
-  scale_color_manual("FA type", values=c("grey40", "black"),labels = c("to other","to distractor")) +
-  ylab(expression(paste("number of False Alarms")))+
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())
-
-plot4 <- ggplot(dat2plot, aes(x = 1, y = d_prime)) +
-  # geom_hline(yintercept=0, show.legend = FALSE) +
-  geom_beeswarm(cex=4.5, size = 5,alpha=0.4)+
-  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y..), geom='errorbar', width=0.9, size=1.5) +
-  # scale_fill_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  # scale_color_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange"))
-  ylab(expression(paste("dprime")))+
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())
-
-
-# cowplot::plot_grid(plot1, plot2, plot3, ncol = 3,labels = "AUTO")
-plotttitle <- ggdraw() + draw_label("behavioral measures", fontface='bold')
-plotplots <- ggarrange(plot1, plot2, plot3, plot4, ncol = 4, align = "h", widths=c(2,2,5,2))
-ggarrange(plotttitle, plotplots, nrow = 2, heights=c(0.2, 1))
-
-
-
-
-## for publication
-theme_set(theme_bw())
-plot1 <- ggplot(dat2plot, aes(x = eventtype2, y = RT_Mean, color =eventtype2,)) +
-  # geom_hline(yintercept=0, show.legend = FALSE) +
-  geom_beeswarm(cex=4.5, size = 5,alpha=0.4)+
-  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y..), geom='errorbar', width=0.9, size=1.5) +
-  scale_fill_brewer(palette = "Dark2")+
-  scale_color_brewer(palette = "Dark2")+
-  # scale_fill_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  # scale_color_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  ylab(expression(paste("reaction time in ms")))+
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())+
-  scale_y_continuous(limits=c(400, 775))
-
-plot1b <- ggplot(dat2plot, aes(x = 1, y = RT_Mean, color =eventtype2, fill = eventtype2)) +
-  geom_flat_violin(position = position_nudge(x = .1, y = 0), adjust = 1.0, trim = FALSE, alpha = 0.8)+
-  # scale_fill_manual(values=c("grey40"))+
-  scale_fill_brewer(palette = "Dark2")+
-  # scale_color_manual(values=c("grey40"))+
-  scale_color_brewer(palette = "Dark2")+
-  theme(axis.title.y=element_blank(),
-         axis.text.y=element_blank(),
-         axis.ticks.y=element_blank())+
-  theme(axis.title.x=element_blank(),
-         axis.text.x=element_blank(),
-         axis.ticks.x=element_blank())+
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
-  scale_y_continuous(limits=c(400, 775))
-
-plot2 <- ggplot(dat2plot, aes(x = eventtype2, y = Hitrate, color =eventtype2)) +
-  # geom_hline(yintercept=0, show.legend = FALSE) +
-  geom_beeswarm(cex=4.5, size = 5,alpha=0.4)+
-  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y..), geom='errorbar', width=0.9, size=1.5) +
-  scale_fill_brewer(palette = "Dark2")+
-  scale_color_brewer(palette = "Dark2")+
-    # scale_fill_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  # scale_color_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange"))
-  ylab(expression(paste("hit rate in %")))+
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())+
-  scale_y_continuous(limits=c(30, 100))
-
-plot2b <- ggplot(dat2plot, aes(x = 1, y = Hitrate,  color =eventtype2, fill = eventtype2)) +
-  geom_flat_violin(position = position_nudge(x = .1, y = 0), adjust = 1.0, trim = FALSE, alpha = 0.8)+
-  # scale_fill_manual(values=c("grey40"))+
-  scale_fill_brewer(palette = "Dark2")+
-  # scale_color_manual(values=c("grey40"))+
-  scale_color_brewer(palette = "Dark2")+
-  theme(axis.title.y=element_blank(),
-         axis.text.y=element_blank(),
-         axis.ticks.y=element_blank())+
-  theme(axis.title.x=element_blank(),
-         axis.text.x=element_blank(),
-         axis.ticks.x=element_blank())+
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
-  scale_y_continuous(limits=c(30, 100))
-
-  
-
-# cowplot::plot_grid(plot1, plot2, plot3, ncol = 3,labels = "AUTO")
-plotttitle <- ggdraw() + draw_label("behavioral measures", fontface='bold')
-plotplots <- ggarrange(plot1, plot1b,plot2, plot2b, ncol = 4,common.legend = TRUE,align = "h", widths=c(3,2,3,2))
-
-savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", width = 5, height = 6, unit = "in")
-saveplot <- ggarrange(plotttitle, plotplots, nrow = 2, heights=c(0.2, 1))
-
-savefig %<>%
-  fill_panel(saveplot, column = 1, row = 1)
-savefig
-# save_multi_panel_figure(savefig, "hits_reactiontimes.eps")
-
-
-## for publication
-theme_set(theme_bw())
-plot1 <- ggplot(dat2plot, aes(x = eventtype2, y = RT_Mean, color =eventtype2)) +
-  # geom_hline(yintercept=0, show.legend = FALSE) +
-  geom_beeswarm(cex=4.5, size = 5,alpha=0.4)+
-  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y..), geom='errorbar', width=0.9, size=1.5) +
-  scale_fill_brewer(palette = "Dark2")+
-  scale_color_brewer(palette = "Dark2")+
-  # scale_fill_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  # scale_color_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  ylab(expression(paste("reaction time in ms")))+
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())+
-  scale_y_continuous(limits=c(400, 775))
-
-plot1b <- ggplot(dat2plot, aes(x = 1, y = RT_Mean, color =eventtype2, fill = eventtype2)) +
-  geom_flat_violin(position = position_nudge(x = .1, y = 0), adjust = 1.0, trim = FALSE, alpha = 0.8)+
-  # scale_fill_manual(values=c("grey40"))+
-  scale_fill_brewer(palette = "Dark2")+
-  # scale_color_manual(values=c("grey40"))+
-  scale_color_brewer(palette = "Dark2")+
-  theme(axis.title.y=element_blank(),
-         axis.text.y=element_blank(),
-         axis.ticks.y=element_blank())+
-  theme(axis.title.x=element_blank(),
-         axis.text.x=element_blank(),
-         axis.ticks.x=element_blank())+
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
-  scale_y_continuous(limits=c(400, 775))
-
-plot2 <- ggplot(dat2plot, aes(x = eventtype2, y = d_prime, color =eventtype2)) +
-  # geom_hline(yintercept=0, show.legend = FALSE) +
-  geom_beeswarm(cex=4.5, size = 5,alpha=0.4)+
-  stat_summary(fun.y=mean, aes(ymin=..y.., ymax=..y..), geom='errorbar', width=0.9, size=1.5) +
-  scale_fill_brewer(palette = "Dark2")+
-  scale_color_brewer(palette = "Dark2")+
-  # scale_fill_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange")) +
-  # scale_color_manual("attended color", values=c("darkcyan", "darkgreen", "darkorange"))
-  ylab(expression(paste("dprime")))+
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())+
-  scale_y_continuous(limits=c(0.0, 3.8))
-
-plot2b <- ggplot(dat2plot, aes(x = 1, y = d_prime, color =eventtype2, fill = eventtype2)) +
-  geom_flat_violin(position = position_nudge(x = .1, y = 0), adjust = 1.0, trim = FALSE, alpha = 0.8)+
-  # scale_fill_manual(values=c("grey40"))+
-  scale_fill_brewer(palette = "Dark2")+
-  # scale_color_manual(values=c("grey40"))+
-  scale_color_brewer(palette = "Dark2")+
-  theme(axis.title.y=element_blank(),
-         axis.text.y=element_blank(),
-         axis.ticks.y=element_blank())+
-  theme(axis.title.x=element_blank(),
-         axis.text.x=element_blank(),
-         axis.ticks.x=element_blank())+
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
-  scale_y_continuous(limits=c(0.0, 3.8))
-
-  
-
-# cowplot::plot_grid(plot1, plot2, plot3, ncol = 3,labels = "AUTO")
-plotttitle <- ggdraw() + draw_label("behavioral measures", fontface='bold')
-plotplots <- ggarrange(plot1, plot1b,plot2, plot2b, ncol = 4,common.legend = TRUE,align = "h", widths=c(3,2,3,2))
-
-savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", width = 5, height = 6, unit = "in")
-saveplot <- ggarrange(plotttitle, plotplots, nrow = 2, heights=c(0.2, 1))
-
-savefig %<>%
-  fill_panel(saveplot, column = 1, row = 1)
-savefig
-# save_multi_panel_figure(savefig, "dprime_reactiontimes.eps")
-  
-
-```
 
 
 ## Display behavioral data numerically
@@ -402,8 +157,8 @@ dat2plot1 <- DATA_Trials %>%
     RT_STD=sd(RT,na.rm=TRUE),
     Hitrate=(sum(response=='hit')/n())*100,
     Hitrate_adj1 = ifelse((sum(response=='hit')/n())>0,
-                         min(c(sum(response=='hit')/n(), 1-(.5/n()))),
-                         .5/n()), # according to Stanislaw H, Todorov N, Behav Res Meth (1999) 31, 137-149, "1/2N rule" or
+                          min(c(sum(response=='hit')/n(), 1-(.5/n()))),
+                          .5/n()), # according to Stanislaw H, Todorov N, Behav Res Meth (1999) 31, 137-149, "1/2N rule" or
     Hitrate_adj2 = (sum(response=='hit')+0.5)/(n()+1)) # loglinear approach (Hautus, 1995)
 
 dat2plot1a = DataIn1%>%
@@ -426,17 +181,17 @@ dat2plot <- merge(dat2plot1,dat2plot1a,by = "participant") %>% # adjust for HR a
 dat2plot  %>%
   group_by(eventtype2)%>%
   dplyr::summarise(N = n(), mean_RT = mean(RT_Mean), std_RT = sd(RT_Mean), mean_Hitrate = mean(Hitrate), std_Hitrate = sd(Hitrate),
-            mean_FArate = mean(FArate), std_FArate = sd(FArate), mean_dprime = mean(d_prime), std_dprime = sd(d_prime)) %>%
+                   mean_FArate = mean(FArate), std_FArate = sd(FArate), mean_dprime = mean(d_prime), std_dprime = sd(d_prime)) %>%
   kable(escape = F, digits = c(3,3,3,3,3,3,3,3,3,3), caption = c("descriptives of behavioral measures")) %>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
 
 dat2plot  %>%
   group_by(participant)%>%
   dplyr::summarise(N = n(), mean_RT = mean(RT_Mean), std_RT = sd(RT_Mean), mean_Hitrate = mean(Hitrate), std_Hitrate = sd(Hitrate),
-            mean_FArate = mean(FArate), std_FArate = sd(FArate), mean_dprime = mean(d_prime), std_dprime = sd(d_prime)) %>%
+                   mean_FArate = mean(FArate), std_FArate = sd(FArate), mean_dprime = mean(d_prime), std_dprime = sd(d_prime)) %>%
   ungroup()%>%
   dplyr::summarise(N = n(), M_RT = mean(mean_RT), SD_RT = sd(mean_RT), M_Hitrate = mean(mean_Hitrate), SD_Hitrate = sd(mean_Hitrate),
-            M_FArate = mean(mean_FArate), SD_FArate = sd(mean_FArate), M_dprime = mean(mean_dprime), SD_dprime = sd(mean_dprime)) %>%
+                   M_FArate = mean(mean_FArate), SD_FArate = sd(mean_FArate), M_dprime = mean(mean_dprime), SD_dprime = sd(mean_dprime)) %>%
   kable(escape = F, digits = c(3,3,3,3,3,3,3,3,3,3), caption = c("descriptives of behavioral measures")) %>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
 
@@ -446,158 +201,6 @@ dat2plot  %>%
 
 ## Statistical analysis
 
-### ANOVA models
-### linear mixed models
-
-#### test RT, Hitrate and dprime between primed and non primed targets
-
-**RT** ~ **priming**
-
-<br> 
-
-```{r lme_RT_lum, fig.show = "hide", warning = FALSE, fig.height=4, fig.width=10}
-dat2plot2 <- DataIn2 %>%
-  mutate(`FA_all`= FA + `FA_proper`)%>%
-  # dplyr::select(-FA)%>%
-  dplyr::select(-FA_all)%>%
-  pivot_longer(c(-subject ),names_to = "FA_type", values_to = "number")%>%
-  filter(FA_type=='FA_proper' | FA_type=='FA')
-
-
-dat2plot1 <- DATA_Trials %>%
-  group_by(participant,eventtype2)%>%
-  dplyr::summarise(RT_Mean=mean(RT,na.rm=TRUE),RT_STD=sd(RT,na.rm=TRUE),Hitrate=(sum(response=='hit')/n())*100)
-
-dat2plot2 <- DataIn2 %>%
-  mutate(`FA_all`= FA + `FA_proper`)%>%
-  # dplyr::select(-FA)%>%
-  dplyr::select(-FA_all)%>%
-  dplyr::rename(participant=subject)
-
-dat2plot_all <- merge(dat2plot1,dat2plot2,by = "participant") %>% # adjust for HR and FR of 0 or 1
-  mutate(
-    d_prime = qnorm(Hitrate)-qnorm(FA_proper_rate),
-    c = -0.5*(qnorm(Hitrate)+qnorm(FA_proper_rate))
-  )
-
-
-
-# # statisticical analysis ANOVA
-# StatsOut <- dat2plot_all %>%
-#   aov_ez(id="participant", dv = "RT_Mean", data = ., between = c("colorlum"), include_aov = afex_options("include_aov"))
-# 
-# StatsOut%>%
-#   .$anova %>%
-#   mutate(factor = rownames(.))%>%
-#   mutate(
-#     `Pr(>F)` = cell_spec(ifelse(round(`Pr(>F)`,4)<.001,"< .001",round(`Pr(>F)`,4)),
-#                         color = ifelse(is.nan(`Pr(>F)`),"blue", ifelse(`Pr(>F)` < .05, "green", "red")),
-#                         bold = ifelse(is.nan(`Pr(>F)`),F, ifelse(`Pr(>F)` < .05, T,F)),
-#                         align = "center")
-#   ) %>%
-#   dplyr::select(`num Df`, `den Df`, MSE, `F`, ges, `Pr(>F)`) %>%
-#   kable(escape = F, digits = c(3,3,3,3,3,3,3,3,3), caption = c("ANOVA | dv = RT in ms")) %>%
-#   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 6))
-
-
-# RT
-dat2plot_all %>%
-  nest() %>%
-  mutate(
-    # stats = map(data, ~ broom::tidy(t.test(RT_Mean ~ eventtype2, data = ., paired = TRUE))),
-    stats = map(data, ~ rstatix::t_test(RT_Mean ~ eventtype2, data = ., paired = TRUE, detailed = TRUE)),
-    t_test_bf = map(data, ~ extractBF(ttestBF(formula = RT_Mean ~ eventtype2, data = ., 
-                                              iterations = num.iter, rscale = sqrt(2)/2))),
-    meanval = map(data, ~ .x %>%
-                    group_by(eventtype2) %>%
-                    summarise(
-                      mean_RT_Mean = mean(RT_Mean, na.rm = TRUE),
-                      std_RT_Mean = sd(RT_Mean, na.rm = TRUE)
-                    ) %>%
-                    pivot_wider(names_from = eventtype2, 
-                                values_from = c(mean_RT_Mean, std_RT_Mean), 
-                                names_sep = "_")
-    ),
-    Dz = map(data, ~ rstatix::cohens_d(RT_Mean ~ eventtype2, data = ., paired = TRUE))
-  ) %>%
-  # unnest(cols = c(stats, cohens_d, t_test_bf, meanval))%>%
-  unnest(cols = c(Dz))%>%
-  dplyr::select(stats,t_test_bf, meanval, effsize) %>%
-  unnest(cols = c(stats, t_test_bf, meanval)) %>%
-  mutate(BF10 = bf, BF01 = 1/bf, 
-         M_RT_noprim = mean_RT_Mean_target_nonprimed,
-         SD_RT_noprim = std_RT_Mean_target_nonprimed,
-         M_RT_prim = mean_RT_Mean_target_primed,
-         SD_RT_prim = std_RT_Mean_target_primed,
-         diff=estimate,
-         Dz = effsize, t.value=statistic)%>%
-  dplyr::select(M_RT_noprim, SD_RT_noprim, M_RT_prim, SD_RT_prim, diff, t.value, df, p, Dz, BF10, BF01)%>%
-  # mutate(p = p.adjust(p, method="holm")) %>% # none, holm
-  # mutate(p = p.adjust(p, method="none")) %>% # none, holm
-  ungroup()%>%
-  # mutate(
-  #   p = cell_spec(p, color = ifelse(is.nan(p),"blue", ifelse(p < .05, "green", "red")))
-  # ) %>%
-  mutate(
-    p = cell_spec(ifelse(round(p,4)<.001,"< .001",round(p,4)),
-                  color = ifelse(is.nan(p),"blue", ifelse(p < .05, "green", "red")),
-                  bold = ifelse(is.nan(p),F, ifelse(p < .05, T,F)),
-                  align = "center")
-  ) %>%
-  kbl(escape = F, digits = 3, 
-        caption = c("RT | modulation by target type (primed vs nonprimed) | t-tests of difference")) %>%
-  kable_styling("striped", full_width = T,bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
-```
-
-**Hitrate** ~ **priming**
-
-<br> 
-
-```{r lme_HR_lum, fig.show = "hide", warning = FALSE, fig.height=4, fig.width=10}
-# Hitrate
-dat2plot_all %>%
-  nest() %>%
-  mutate(
-    # stats = map(data, ~ broom::tidy(t.test(Hitrate ~ eventtype2, data = ., paired = FALSE))),
-    stats = map(data, ~ rstatix::t_test(Hitrate ~ eventtype2, data = ., paired = TRUE, detailed = TRUE)),
-    t_test_bf = map(data, ~ extractBF(ttestBF(formula = Hitrate ~ eventtype2, data = ., iterations = num.iter, rscale = sqrt(2)/2))),
-    meanval = map(data, ~ .x %>%
-                    group_by(eventtype2) %>%
-                    summarise(
-                      mean_HR_Mean = mean(Hitrate, na.rm = TRUE),
-                      std_HR_Mean = sd(Hitrate, na.rm = TRUE)
-                    ) %>%
-                    pivot_wider(names_from = eventtype2, 
-                                values_from = c(mean_HR_Mean, std_HR_Mean), 
-                                names_sep = "_")
-    ),
-    cohens_d = map(data, ~ rstatix::cohens_d(Hitrate ~ eventtype2, data = ., paired = FALSE))
-  ) %>%
-  # unnest(cols = c(stats, cohens_d, t_test_bf, meanval))%>%
-  unnest(cols = c(cohens_d))%>%
-  dplyr::select(stats,t_test_bf, meanval, effsize) %>%
-  unnest(cols = c(stats, t_test_bf, meanval)) %>%
-  mutate(BF10 = bf, BF01 = 1/bf, 
-         M_HR_noprim = mean_HR_Mean_target_nonprimed,
-         SD_HR_noprim = std_HR_Mean_target_nonprimed,
-         M_HR_prim = mean_HR_Mean_target_primed,
-         SD_HR_prim = std_HR_Mean_target_primed,
-         diff=estimate,
-         Dz = effsize, t.value=statistic)%>%
-  dplyr::select(M_HR_noprim, SD_HR_noprim, M_HR_prim, SD_HR_prim, diff, t.value, df, p, Dz, BF10, BF01)%>%
-  # mutate(p = p.adjust(p, method="holm")) %>% # none, holm
-  # mutate(p = p.adjust(p, method="none")) %>% # none, holm
-  ungroup()%>%
-  mutate(
-    p = cell_spec(ifelse(round(p,4)<.001,"< .001",round(p,4)),
-                        color = ifelse(is.nan(p),"blue", ifelse(p < .05, "green", "red")),
-                        bold = ifelse(is.nan(p),F, ifelse(p < .05, T,F)),
-                        align = "center")
-  ) %>%
-  kbl(escape = F, digits = 3, 
-        caption = c("Hitrate | modulation by target type (primed vs nonprimed) | t-tests of difference")) %>%
-  kable_styling("striped", full_width = T,bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
-```
 <br> 
 
 ## Time-resolved Analysis
@@ -608,6 +211,8 @@ dat2plot_all %>%
 
 #### Statistical test for time-resolved analysis of probability of hits/hit rates
 *Do probabilities of Hits for primed and non-primed events differ (differently) across time?*
+
+##### Fit and compare GAM models
 
 full model: response ~ eventtype2 * eventonsettimes + (1 | participant)
 reduced model: response ~ eventtype2 + eventonsettimes + (1 | participant)
@@ -624,81 +229,47 @@ model_gam_interaction <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
          eventtype2 = as.factor(eventtype2))%>%
   gam(hit ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant,
-                 data = ., family = binomial)
-  #
-# coef(model_gam_interaction)
-# summary(model_gam_interaction)
+      data = ., family = binomial)
+#
+
 
 # no interaction only main effects
 model_gam_TwoMain <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
          eventtype2 = as.factor(eventtype2))%>%
   gam(hit ~ eventtype2 + s(eventonsettimes, bs = "cs") + participant, 
-                 data = ., family = binomial)
+      data = ., family = binomial)
 
 # no effect of time only CUE
 model_gam_OneMain <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
          eventtype2 = as.factor(eventtype2))%>%
   gam(hit ~ eventtype2  + participant, 
-                 data = ., family = binomial)
+      data = ., family = binomial)
 
 # no effect of time
 model_gam_null <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
          eventtype2 = as.factor(eventtype2))%>%
   gam(hit ~  participant, 
-                 data = ., family = binomial)
+      data = ., family = binomial)
 
-plot(model_gam_interaction, pages = 1)
-# anova(model_gam_interaction)
-
-
-# based on 'marginal effects'
-# plot_predictions(model_gam_interaction, condition = c('eventonsettimes', 'eventtype2'),
-#                  type = 'response') +
-#       labs(y = "Predicted probability of a hit",
-#            title = "Average smooth effect of eventonsettimes | GAM",
-#            subtitle = "Per priming condition")
 
 
 anova(model_gam_null,model_gam_OneMain,model_gam_TwoMain,model_gam_interaction) %>%
   tidy()%>%
   kbl(escape = F, digits=3,
       caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
-  # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>",
-  #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = 
                                                                    "hold_position"))
 
 
 AIC(model_gam_null, model_gam_OneMain, model_gam_TwoMain, model_gam_interaction) %>%
-  # tidy()%>%
   kbl(escape = F, digits=3,
       caption = paste0("AIC | comparing full and reduced model | GAM:"))%>%
-  # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>",
-  #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options =
                                                                    "hold_position"))
-# based on 'gratia'
-# # Plot difference between smooths (e.g., eventtype2 levels "A" and "B")
-# diff_df <- difference_smooths(model_gam_interaction,
-#                                smooth = "s(eventonsettimes)",
-#                                comparison = c("eventtype2A", "eventtype2B"),
-#                                n = 10)  # 200 points across the range
 
-# diff_df <- diff_df %>%
-#   mutate(
-#     .diff = plogis(.diff),
-#     .lower_c = plogis(.lower_ci),
-#     .upper_ci = plogis(.upper_ci)
-#   )
-
-# ggplot(diff_df, aes(x = eventonsettimes, y = .diff)) +
-#   geom_line() +
-#   geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), alpha = 0.3) +
-#   geom_hline(yintercept = 0, linetype = "dashed") +
-#   labs(x = "Event onset time", y = "Difference in log-odds of Hitrate (nonprimed - primed)")
 
 
 ```
@@ -722,9 +293,9 @@ model_gam_interaction <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
          eventtype2 = as.factor(eventtype2))%>%
   gam(hit ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant,
-                 data = ., family = binomial)
+      data = ., family = binomial)
 
-# alternative approach
+
 # Define the time windows
 all_timepoints = sort(unique(DATA_Trials$eventonsettimes))
 early_window <- all_timepoints[
@@ -734,42 +305,42 @@ late_window <-all_timepoints[
   (all_timepoints >= max(unique(DATA_Trials$eventonsettimes)) -.5) & (all_timepoints <= max(unique(DATA_Trials$eventonsettimes)) + 0)
 ]
 
+# predict values in early time window
 emm_predictions_early <- emmeans(
   model_gam_interaction,
   ~ eventtype2 ,
   at = list(eventonsettimes = early_window)
 )
 
+# predict values in late time window
 emm_predictions_late <- emmeans(
   model_gam_interaction,
   ~ eventtype2 ,
   at = list(eventonsettimes = late_window)
 )
 
-# 1. Add the identifier column to the grid of each object
+# Add the identifier column to the grid of each object
 emm_predictions_early@grid$eventonsettimes <- "early"
 emm_predictions_late@grid$eventonsettimes  <- "late"
 
 
 # Combine the objects using named arguments
 emm_predictions <- rbind(early = emm_predictions_early, 
-                      late  = emm_predictions_late)
+                         late  = emm_predictions_late)
 
 summary(emm_predictions, type = "response") %>%
   as.data.frame()%>%
   # mutate(eventonsettimes=c("early","early","late","late"))%>%
   kbl(escape = F, digits=4,
       caption = paste0("Marginal Mean predicted Probabilities in early and late time window"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
-# Now, set up the contrast to compare early vs. late for each condition.
-# This will perform a pairwise comparison for each event type.
+# contrast to compare early vs. late timewindow separately for each condition.
+# pairwise comparison for each event type.
 # do everything on the response scale, i.e. probability scale
 emm_response_scale <- regrid(emm_predictions)
 
-# Now perform the contrasts on the regridded object
+# contrasts on the regridded object
 contrast_tdiffs <- contrast(
   emm_response_scale,
   method = "pairwise",
@@ -788,24 +359,12 @@ summary(contrast_tdiffs) %>%
                         bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
                         align = "center")
   ) %>%
-  mutate(`CohensD1` =
-           summary(eff_size(contrast_tdiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = df.residual(model_gam_interaction), method = "identity"))$effect.size
-  )%>%
-  mutate(`CohensD2` =
-           summary(eff_size(contrast_tdiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = sum(model_gam_interaction$edf), method = "identity"))$effect.size
-  )%>%
   kbl(escape = F, digits=4,
-      caption = paste0("Contrast of marginal means of hit rates between early and late time window | Holm corrected"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
+      caption = paste0("Contrast of predicted marginal means of hit rates between early and late time window | Holm corrected"))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
 
-
+# contrast to compare both conditions separately for each time window
 # Now perform the contrasts on the regridded object
 contrast_condiffs <- contrast(
   emm_response_scale,
@@ -825,20 +384,8 @@ summary(contrast_condiffs) %>%
                         bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
                         align = "center")
   ) %>%
-  mutate(`CohensD1` =
-           summary(eff_size(contrast_condiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = df.residual(model_gam_interaction), method = "identity"))$effect.size
-  )%>%
-  mutate(`CohensD2` =
-           summary(eff_size(contrast_condiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = sum(model_gam_interaction$edf), method = "identity"))$effect.size
-  )%>%
   kbl(escape = F, digits=4,
       caption = paste0("Contrast of marginal means of hit rates between conditions | Holm corrected"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
 
@@ -850,7 +397,7 @@ contrast(
   contrast(method = "pairwise", by = NULL) %>%
   summary()%>%
   as.data.frame()%>%
-  mutate(contrast = c("early(primed-nonprimed) - late(primed-nonprimed)"))%>%
+  mutate(contrast = c("early(stim-topdown) - late(stim-topdown)"))%>%
   mutate(
     p.value = cell_spec(ifelse(round(p.value,4)<.001,"< .001",round(p.value,4)), 
                         color = ifelse(is.nan(p.value),"blue", ifelse(p.value < .05, "green", "red")),
@@ -859,13 +406,11 @@ contrast(
   ) %>%
   kbl(escape = F, digits=4,
       caption = paste0("Contrast of marginal means of hit rates diff of diffs "))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
 
 
-
+# average in specified time windows
 emm_predictions_plot <- emm_predictions%>%
   regrid()%>%
   as.data.frame() %>%
@@ -875,8 +420,6 @@ emm_predictions_plot <- emm_predictions%>%
   ))
 
 
-
-
 # Generate a data frame of predictions for the eventonsettimes effect
 predictions_df <- ggpredict(
   model_gam_interaction,
@@ -884,21 +427,17 @@ predictions_df <- ggpredict(
 )
 
 
- 
 plotplot <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
          eventtype2 = as.factor(eventtype2))%>%
   ggplot(., aes(x = eventonsettimes, y = as.numeric(hit), color = eventtype2)) +
   # Original data points
   stat_summary(fun = mean, geom = "point", alpha = 0.4, bins=length(unique(DATA_Trials$eventonsettimes))) +
-   # Add the GAM predictions as a line and a ribbon
-  # geom_ribbon(data = predictions_df, aes(x = x, y = predicted,ymin = conf.low, ymax = conf.high, fill = group),
-  #             alpha = 0.4, , colour = NA) +
+  # Add the GAM predictions as a line and a ribbon
   geom_ribbon(data = predictions_df, aes(x = x, y = predicted,fill = group, ymin = conf.low, ymax = conf.high, group=group),
               alpha = 0.2, , colour = NA) +
-  # geom_ribbon(data = predictions_df, aes(x = x, y = predicted,ymin = conf.low, ymax = conf.high), fill = "steelblue", alpha = 0.2) +
   geom_line(data = predictions_df, aes(x = x, y = predicted, color = group), size = 1)+
-    # Labels and theme
+  # Labels and theme
   labs(x = "Event Onset Time (s)", y = "Probability of Hits",
        title = "Probability of Hits | GAM model", subtitle = "+ predicted hit rates for windows of interest") +
   geom_point(data = emm_predictions_plot, aes(y = prob, group = eventtype2), size = 2, stroke = 1) +
@@ -927,6 +466,8 @@ savefig
 #### Statistical test for time-resolved analysis of reaction times
 *Do reaction times for hits for primed and non-primed events differ (differently) across time?*
 
+##### Fit and compare GAM models
+
 full model: RT ~ eventtype2 * eventonsettimes + (1 | participant)
 
 reduced model: RT ~ eventtype2 + eventonsettimes + (1 | participant)
@@ -940,47 +481,34 @@ model_gam_interaction <- DATA_Trials %>%
   filter(response=='hit')%>%
   mutate(eventtype2 = as.factor(eventtype2))%>%
   gam(RT ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant, 
-                 data = .)
-# coef(model_gam_interaction)
-# summary(model_gam_interaction)
+      data = .)
+
 
 # no interaction only main effects
 model_gam_TwoMain <- DATA_Trials %>%
-filter(response=='hit')%>%
+  filter(response=='hit')%>%
   mutate(eventtype2 = as.factor(eventtype2))%>%
   gam(RT ~ eventtype2 + s(eventonsettimes, bs = "cs") + participant, 
-                 data = .)
+      data = .)
 
 # no effect of time only CUE
 model_gam_OneMain <- DATA_Trials %>%
   mutate(eventtype2 = as.factor(eventtype2))%>%
   gam(RT ~ eventtype2 +  participant, 
-                 data = .)
+      data = .)
 
 # no effect of time
 model_gam_null <- DATA_Trials %>%
   mutate(eventtype2 = as.factor(eventtype2))%>%
   gam(RT ~ participant, 
-                 data = .)
-  
-plot(model_gam_interaction, pages = 1)
-# anova(model_gam_interaction)
+      data = .)
 
-
-# based on 'marginal effects'
-# plot_predictions(model_gam_interaction, condition = c('eventonsettimes', 'eventtype2'),
-#                  type = 'response') +
-#       labs(y = "Predicted probability of a hit",
-#            title = "Average smooth effect of eventonsettimes | GAM",
-#            subtitle = "Per priming condition")
 
 
 anova(model_gam_null,model_gam_OneMain,model_gam_TwoMain,model_gam_interaction) %>%
   tidy()%>%
   kbl(escape = F, digits=3,
       caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
-  # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>",
-  #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = 
                                                                    "hold_position"))
 
@@ -989,8 +517,6 @@ AIC(model_gam_null, model_gam_OneMain, model_gam_TwoMain, model_gam_interaction)
   # tidy()%>%
   kbl(escape = F, digits=3,
       caption = paste0("AIC | comparing full and reduced model | GAM:"))%>%
-  # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>",
-  #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options =
                                                                    "hold_position"))
 ```
@@ -1015,9 +541,8 @@ model_gam_interaction <- DATA_Trials %>%
   filter(response=='hit')%>%
   mutate(eventtype2 = as.factor(eventtype2))%>%
   gam(RT ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant, 
-                 data = .)
+      data = .)
 
-# alternative approach
 # Define the time windows
 all_timepoints = sort(unique(DATA_Trials$eventonsettimes))
 early_window <- all_timepoints[
@@ -1046,19 +571,16 @@ emm_predictions_late@grid$eventonsettimes  <- "late"
 
 # Combine the objects using named arguments
 emm_predictions <- rbind(early = emm_predictions_early, 
-                      late  = emm_predictions_late)
+                         late  = emm_predictions_late)
 
 summary(emm_predictions, type = "response") %>%
   as.data.frame()%>%
-  # mutate(eventonsettimes=c("early","early","late","late"))%>%
   kbl(escape = F, digits=4,
       caption = paste0("Marginal Mean predicted RTs in early and late time window"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
-# Now, set up the contrast to compare early vs. late for each condition.
-# This will perform a pairwise comparison for each event type.
+# contrast to compare early vs. late timewindow separately for each condition.
+# pairwise comparison for each event type.
 # do everything on the response scale, i.e. probability scale
 emm_response_scale <- regrid(emm_predictions)
 
@@ -1081,20 +603,8 @@ summary(contrast_tdiffs) %>%
                         bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
                         align = "center")
   ) %>%
-  mutate(`CohensD1` =
-           summary(eff_size(contrast_tdiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = df.residual(model_gam_interaction), method = "identity"))$effect.size
-  )%>%
-  mutate(`CohensD2` =
-           summary(eff_size(contrast_tdiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = sum(model_gam_interaction$edf), method = "identity"))$effect.size
-  )%>%
   kbl(escape = F, digits=4,
       caption = paste0("Contrast of marginal means of RTs between early and late time window | Holm corrected"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
 
@@ -1117,23 +627,12 @@ summary(contrast_condiffs) %>%
                         bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
                         align = "center")
   ) %>%
-  mutate(`CohensD1` =
-           summary(eff_size(contrast_condiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = df.residual(model_gam_interaction), method = "identity"))$effect.size
-  )%>%
-  mutate(`CohensD2` =
-           summary(eff_size(contrast_condiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = sum(model_gam_interaction$edf), method = "identity"))$effect.size
-  )%>%
   kbl(escape = F, digits=4,
       caption = paste0("Contrast of marginal means of RTs between conditions | Holm corrected"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
 
+# predicted values for time windows
 emm_predictions_plot <- emm_predictions%>%
   regrid()%>%
   as.data.frame() %>%
@@ -1141,8 +640,6 @@ emm_predictions_plot <- emm_predictions%>%
     eventonsettimes=="early" ~ mean(early_window),
     eventonsettimes=="late" ~ mean(late_window),
   ))
-
-
 
 # Generate a data frame of predictions for the eventonsettimes effect
 predictions_df <- ggpredict(
@@ -1156,15 +653,11 @@ plotplot <- DATA_Trials %>%
   ggplot(., aes(x = eventonsettimes, y = as.numeric(RT), color = eventtype2)) +
   # Original data points
   stat_summary(fun = mean, geom = "point", alpha = 0.4, bins=length(unique(DATA_Trials$eventonsettimes))) +
-  
   # Add the GAM predictions as a line and a ribbon
-  # geom_ribbon(data = predictions_df, aes(x = x, y = predicted,ymin = conf.low, ymax = conf.high, fill = group),
-  #             alpha = 0.4, , colour = NA) +
   geom_ribbon(data = predictions_df, aes(x = x, y = predicted,fill = group, ymin = conf.low, ymax = conf.high, group=group),
               alpha = 0.2, , colour = NA) +
-  # geom_ribbon(data = predictions_df, aes(x = x, y = predicted,ymin = conf.low, ymax = conf.high), fill = "steelblue", alpha = 0.2) +
   geom_line(data = predictions_df, aes(x = x, y = predicted, color = group), size = 1)+
-    # Labels and theme
+  # Labels and theme
   labs(x = "Event Onset Time (s)", y = "RT",
        title = "RT | GAM model", subtitle = "+ predicted RT for windows of interest") +
   geom_point(data = emm_predictions_plot, aes(y = emmean, group = eventtype2), size = 2,  stroke = 1) +
@@ -1185,180 +678,85 @@ savefig
 # save_multi_panel_figure(savefig, "figures/Behavior_ProbRT.pdf")
 
 ```
-<br> 
-
 
 <br> 
 
-### False Alarm Rates
 
-#### Display of smoothed False Alarm Rates across time
-What are the distributions of false alarm rates across the trial?
+### SSVEPs
 
 <br> 
 
-```{r disp_FA_X_TIME, fig.height=4, fig.width=7, warning = FALSE}
-DATA_FA <- DataIn1%>%
-  filter(eventtype=="distractor")%>%
-  mutate(FA = ifelse(response == "FA_proper", 1, 0))
+#### Statistical test for time-resolved analysis of SSVEP modulations
+*Do SSVEP modulations for primed and non-primed events differ (differently) across time?*
 
-ggplot(DATA_FA,aes(x = eventonsettimes, y = FA)) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "loess", se = TRUE, span = 0.3) +    # kernel smoothed average
-  labs(
-    title = "Smoothed FA probabilities",
-    x = "eventonsettimes (s)",
-    y = "FA probability"
-  ) +
-  theme_minimal()
-
-ggplot(DATA_FA, aes(x = eventonsettimes, y = FA)) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +
-  labs(x = "Event Onset Time", y = "FA probability", 
-       title = "GAM Smoothed Probability of FAs") +
-  theme_minimal()
-
-
-
-```
-<br> 
-
-#### Statistical test for time-resolved analysis of FArate
-*Does the probability of FAs differ across time?*
-
-full model: FA ~  eventonsettimes + (1 | participant)
-reduced model: FA ~  1 + (1 | participant)
+##### Fit and compare GAM models
+full model: response ~ eventtype2 * eventonsettimes + (1 | participant)
+reduced model: response ~ eventtype2 + eventonsettimes + (1 | participant)
 
 Test rationale: do these models differ significantly and does the interaction term thus allow for a better explanation of the data.
 
 <br> 
-```{r stat_FA_X_TIME_test, warning = FALSE, fig.height=4, fig.width=6}
-
-
-# Full model with factor
-GLMHit_full <- DataIn1%>%
-  filter(eventtype=="distractor")%>%
-  mutate(response = as.factor(response)) %>%
-  glmer(response ~ eventonsettimes + (1 | participant),data=., family = binomial)
-
-# Reduced model intercept model
-GLMHit_reduced <- DataIn1%>%
-  filter(eventtype=="distractor")%>%
-  mutate(response = as.factor(response)) %>%
-  glmer(response ~ 1 + (1 | participant),data=., family = binomial)
-
-# Likelihood ratio test
-anova( GLMHit_reduced, GLMHit_full, test = "Chisq") %>%
-  as.data.frame() %>%
-  kable(escape = F, digits=3,
-        caption = paste0("Likelihood ratio test via anova | comparing full and reduced model:<br>", 
-                    deparse(formula(GLMHit_full))))%>%
-  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
-
-# Display the summary of the full model + Wald test
-GLMHit_full %>%
-  tidy() %>%
-  kable(escape = F, digits=3,
-        caption = paste0("Likelihood ratio test via anova | comparing full and reduced model:<br>", 
-                    deparse(formula(GLMHit_full)))) %>%
-  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
-
+```{r stat_hitxpresentationtime_distr, warning = FALSE, fig.height=4, fig.width=6}
+# Full model with interaction
 
 # Model with smoothers by condition
-DATA_FA <- DataIn1%>%
-  filter(eventtype=="distractor")%>%
-  mutate(FA = ifelse(response == "FA_proper", 1, 0))
+# with time x cue interaction
+model_gam_interaction <- DataIn3 %>%
+  gam(SSVEP_mod ~ condition + s(time, by = condition ,bs = "cs") + participant, 
+      data = .)
+
+
+# no interaction only main effects
+model_gam_TwoMain <- DataIn3 %>%
+  gam(SSVEP_mod ~ condition + s(time, bs = "cs") + participant, 
+      data = .)
+
+# no effect of time only CUE
+model_gam_OneMain <- DataIn3 %>%
+  gam(SSVEP_mod ~ condition  + participant, 
+      data = .)
+
+# no effect of time
+model_gam_null <- DataIn3 %>%
+  gam(SSVEP_mod ~  participant, 
+      data = .)
 
 
 
-model_gam_factor <- DATA_FA%>%
-  gam(FA ~ s(eventonsettimes, bs = "cs") + participant, 
-                 data = ., family = binomial)
-
-model_gam_null <-DATA_FA%>%
-  gam(FA ~ participant, 
-                 data = ., family = binomial)
-
-plot(model_gam_factor, pages = 1)
-# anova(model_gam_interaction)
-
-
-# plot_predictions(model_gam_factor, condition = 'eventonsettimes',
-#                  type = 'response') +
-#       labs(y = "Predicted probability of a FA",
-#            title = "Average smooth effect of eventonsettimes | GAM")
-
-
-# Likelihood ratio test
-anova( model_gam_null, model_gam_factor, test = "Chisq") %>%
+anova(model_gam_null,model_gam_OneMain,model_gam_TwoMain,model_gam_interaction) %>%
   tidy()%>%
-  # as.data.frame() %>%
-  # mutate(model = c('reduced model','full model')) %>%
-  # dplyr::select(model, `Resid. Df`:`Pr(>Chi)`)%>%
   kbl(escape = F, digits=3,
       caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
-  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = 
+                                                                   "hold_position"))
 
 
-
-ggplot(DATA_FA, aes(x = eventonsettimes, y = FA)) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"),family = binomial,  se = TRUE) +
-  labs(x = "Event Onset Time", y = "FA probability", 
-       title = "GAM Smoothed Probability of FAs") +
-  theme_minimal()
-
-
-# Generate a data frame of predictions for the eventonsettimes effect
-predictions_df <- ggpredict(
-  model_gam_factor,
-  terms = "eventonsettimes"
-)
-
-
+AIC(model_gam_null, model_gam_OneMain, model_gam_TwoMain, model_gam_interaction) %>%
+  kbl(escape = F, digits=3,
+      caption = paste0("AIC | comparing full and reduced model | GAM:"))%>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options =
+                                                                   "hold_position"))
 
 ```
 
 <br> 
 
-##### follow up: directly test time windows | FAs
-*Do FAs for primed and non-primed events differ (differently) across time?*
+##### follow up: directly test time windows | Hitrates
+*Do probabilities of Hits for primed and non-primed events differ (differently) across time?*
 
-full model: FA ~ eventtype2 * eventonsettimes + (1 | participant)
+full model: response ~ eventtype2 * eventonsettimes + (1 | participant)
 
 Test rationale: do these models differ significantly and does the interaction term thus allow for a better explanation of the data.
 
-Extract predicted probability of FAs for early and late window and contrast them
+Extract predicted probability of hits for early and late window and contrast them
 
 <br> 
-```{r stat_FAxpresentationtime_distr_contrasts, warning = FALSE, fig.height=4, fig.width=7}
+
+```{r stat_hitxpresentationtime_distr_contrasts, warning = FALSE, fig.height=3.5, fig.width=4.9}
 # Full model with interaction
-# Model with smoothers by condition
-model_gam_interaction <- DataIn1%>%
-  filter(eventtype=="distractor")%>%
-  mutate(FA = ifelse(response == "FA_proper", 1, 0))%>%
-  gam(FA ~ s(eventonsettimes, bs = "cs") + participant, 
-                 data = ., family = binomial)
-
-
-
-# # based on gam interactions
-# # Define the time windows
-# early_window <- c(0, 0.5) + min(DataIn1$eventonsettimes)
-# late_window <- c(-0.5, 0) + max(DataIn1$eventonsettimes)
-# 
-# # Calculate the average predicted hit probability for each time window
-# # and for each event type (attended vs. unattended).
-# # We'll use the 'at' argument to specify the time points of interest.
-# emm_predictions <- emmeans(
-#   model_gam_interaction,
-#   ~ eventonsettimes,
-#   at = list(eventonsettimes = c(mean(early_window), mean(late_window)))
-# )
-
+model_gam_interaction <- DataIn3 %>%
+  gam(SSVEP_mod ~ condition + s(time, by = condition ,bs = "cs") + participant, 
+      data = .)
 
 # alternative approach
 # Define the time windows
@@ -1372,37 +770,33 @@ late_window <-all_timepoints[
 
 emm_predictions_early <- emmeans(
   model_gam_interaction,
-  ~ 1 ,
-  at = list(eventonsettimes = early_window)
+  ~ condition ,
+  at = list(time = early_window)
 )
 
 emm_predictions_late <- emmeans(
   model_gam_interaction,
-  ~ 1 ,
-  at = list(eventonsettimes = late_window)
+  ~ condition ,
+  at = list(time = late_window)
 )
 
 # 1. Add the identifier column to the grid of each object
-emm_predictions_early@grid$eventonsettimes <- "early"
-emm_predictions_late@grid$eventonsettimes  <- "late"
+emm_predictions_early@grid$time <- "early"
+emm_predictions_late@grid$time  <- "late"
 
 
 # Combine the objects using named arguments
 emm_predictions <- rbind(early = emm_predictions_early, 
-                      late  = emm_predictions_late)
-
-
-
+                         late  = emm_predictions_late)
 
 summary(emm_predictions, type = "response") %>%
   as.data.frame()%>%
-  # mutate(eventonsettimes=c("early","late"))%>%
+  # mutate(eventonsettimes=c("early","early","late","late"))%>%
   kbl(escape = F, digits=4,
-      caption = paste0("Marginal Mean predicted RTs in early and late time window"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
+      caption = paste0("Marginal Mean predicted Probabilities in early and late time window"))%>%
+  # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
+  #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
-
 
 # Now, set up the contrast to compare early vs. late for each condition.
 # This will perform a pairwise comparison for each event type.
@@ -1412,7 +806,9 @@ emm_response_scale <- regrid(emm_predictions)
 # Now perform the contrasts on the regridded object
 contrast_tdiffs <- contrast(
   emm_response_scale,
-  method = "pairwise"
+  method = "pairwise",
+  by = "condition",
+  adjust= "holm"
 )
 
 
@@ -1426,287 +822,841 @@ summary(contrast_tdiffs) %>%
                         bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
                         align = "center")
   ) %>%
-  mutate(`CohensD1` =
-           summary(eff_size(contrast_tdiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = df.residual(model_gam_interaction), method = "identity"))$effect.size
-  )%>%
-  mutate(`CohensD2` =
-           summary(eff_size(contrast_tdiffs,
-                            sigma = sqrt(mean(sigma(model_gam_interaction, type = "response")^2)), # RMS of sigma()
-                            edf = sum(model_gam_interaction$edf), method = "identity"))$effect.size
-  )%>%
   kbl(escape = F, digits=4,
-      caption = paste0("Contrast of marginal means of FAs between early and late time window"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
+      caption = paste0("Contrast of marginal means of hit rates between early and late time window | Holm corrected"))%>%
   kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+
 
 
 # Now perform the contrasts on the regridded object
 contrast_condiffs <- contrast(
   emm_response_scale,
-  method = "pairwise"
+  method = "pairwise",
+  by = "time",
+  adjust= "holm"
 )
+
+
+# View the results on the probability scale
+summary(contrast_condiffs) %>%
+  as.data.frame()%>%
+  # mutate(time = c("early","late"))%>%
+  mutate(
+    p.value = cell_spec(ifelse(round(p.value,4)<.001,"< .001",round(p.value,4)), 
+                        color = ifelse(is.nan(p.value),"blue", ifelse(p.value < .05, "green", "red")),
+                        bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
+                        align = "center")
+  ) %>%
+  kbl(escape = F, digits=4,
+      caption = paste0("Contrast of marginal means of hit rates between conditions | Holm corrected"))%>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+
+
+contrast(
+  emm_response_scale,
+  method = "revpairwise",
+  by = "time"
+) %>% 
+  contrast(method = "pairwise", by = "contrast") %>%
+  summary()%>%
+  as.data.frame()%>%
+  # mutate(contrast = c("early(primed-nonprimed) - late(primed-nonprimed)"))%>%
+  mutate(
+    p.value = cell_spec(ifelse(round(p.value,4)<.001,"< .001",round(p.value,4)), 
+                        color = ifelse(is.nan(p.value),"blue", ifelse(p.value < .05, "green", "red")),
+                        bold = ifelse(is.nan(p.value),F, ifelse(p.value < .05, T,F)),
+                        align = "center")
+  ) %>%
+  kbl(escape = F, digits=4,
+      caption = paste0("Contrast of marginal means of hit rates diff of diffs "))%>%
+  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
+
+
 
 
 emm_predictions_plot <- emm_predictions%>%
   regrid()%>%
   as.data.frame() %>%
-  mutate(eventonsettimes = case_when(
-    eventonsettimes=="early" ~ mean(early_window),
-    eventonsettimes=="late" ~ mean(late_window),
+  mutate(time = case_when(
+    time=="early" ~ mean(early_window),
+    time=="late" ~ mean(late_window),
   ))
-
-
-# Base plot with original data and GAM smoothed line
- DataIn1%>%
-  filter(eventtype=="distractor")%>%
-  mutate(FA = ifelse(response == "FA_proper", 1, 0))%>%
-  ggplot(., aes(x = eventonsettimes, y = as.numeric(FA))) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +
-  # stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.02, alpha = 0.4) + # Optional: add standard error bars
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +
-  labs(x = "Event Onset Time (s)", y = "Probability of Hits",
-       title = "Probability of Hits | GAM model", subtitle = "+ predicted hit rates for windows of interest") +
-  geom_point(data = emm_predictions_plot, aes(y = prob), size = 3, shape = 23, stroke = 1.5) +
-  geom_errorbar(data = emm_predictions_plot, aes(y = prob,ymin = lower.CL, ymax = upper.CL), width = 0.1, size = 1) +
-  # Add vertical lines for the early time window
-  annotate("segment", x = early_window[1], xend = early_window[2], y = -0.01, yend = -0.01, color = "grey60", size = 1.5) +
-  annotate("segment", x = late_window[1], xend = late_window[2], y = -0.01, yend = -0.01, color = "grey60", size = 1.5) +
-  theme_minimal()
-
 
 # Generate a data frame of predictions for the eventonsettimes effect
 predictions_df <- ggpredict(
-  model_gam_factor,
-  terms = "eventonsettimes"
+  model_gam_interaction,
+  terms = c("time","condition")
 )
 
-ggplot(DATA_FA, aes(x = eventonsettimes, y = FA)) +
+
+
+plotplot <- DataIn3 %>%
+  ggplot(., aes(x = time, y = SSVEP_mod, color = condition)) +
   # Original data points
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +
+  stat_summary(fun = mean, geom = "point", alpha = 0.4, bins=length(unique(DATA_Trials$time))) +
   # Add the GAM predictions as a line and a ribbon
-  geom_line(data = predictions_df, aes(x = x, y = predicted), color = "grey60", size = 1) +
-  geom_ribbon(data = predictions_df, aes(x = x, y = predicted,ymin = conf.low, ymax = conf.high), fill = "grey60", alpha = 0.2) +
+  # geom_ribbon(data = predictions_df, aes(x = x, y = predicted,ymin = conf.low, ymax = conf.high, fill = group),
+  #             alpha = 0.4, , colour = NA) +
+  geom_ribbon(data = predictions_df, aes(x = x, y = predicted,fill = group, ymin = conf.low, ymax = conf.high, group=group),
+              alpha = 0.2, , colour = NA) +
+  # geom_ribbon(data = predictions_df, aes(x = x, y = predicted,ymin = conf.low, ymax = conf.high), fill = "steelblue", alpha = 0.2) +
+  geom_line(data = predictions_df, aes(x = x, y = predicted, color = group), size = 1)+
   # Labels and theme
-  labs(x = "Event Onset Time (s)", y = "Probability of FAs",
-       title = "Probability of FAs | GAM model", subtitle = "+ predicted FA rates for windows of interest") +
-  geom_point(data = emm_predictions_plot, aes(y = prob), size = 2,  stroke =1) +
-  geom_errorbar(data = emm_predictions_plot, aes(y = prob,ymin = lower.CL, ymax = upper.CL), width = 0.1, size = 1) +
+  labs(x = "Time (s)", y = "SSVEP modulation",
+       title = "SSVEP modulation | GAM model", subtitle = "+ predicted SSVEPs for windows of interest") +
+  geom_point(data = emm_predictions_plot, aes(y = emmean, group = condition), size = 2, stroke = 1) +
+  geom_errorbar(data = emm_predictions_plot, aes(y = emmean,ymin = lower.CL, ymax = upper.CL), width = 0.1, size = 1) +
+  scale_fill_manual(values=c("#198A83", "#293C4A", "#F1831A"))+
+  scale_color_manual(values=c("#198A83", "#293C4A", "#F1831A")) +
   # Add vertical lines for the early time window
-  annotate("segment", x = early_window[1], xend = rev(early_window)[1], y = -0.01, yend = -0.01, color = "grey60", size = 1.5) +
-  annotate("segment", x = late_window[1], xend = rev(late_window)[1], y = -0.01, yend = -0.01, color = "grey60", size = 1.5) +
+  annotate("segment", x = early_window[1], xend = rev(early_window)[1], y = -15, yend = -15, color = "grey60", size = 1.5) +
+  annotate("segment", x = late_window[1], xend = rev(late_window)[1], y = -15, yend = -15, color = "grey60", size = 1.5) +
+  # theme_minimal()
   theme_light()
 
 
+savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", height = 3,width = 4.9,  unit = "in")
+savefig %<>%
+  fill_panel(plotplot, column = 1, row = 1)
+savefig
+# save_multi_panel_figure(savefig, "figures/Behavior_ProbHits.pdf")
+
+```
+
+## Time-resolved Analysis linking SSVEPs and behavior
+
+Test rationale:
+Use GAM-model predicted data and do a correlation across time for differences smooths
+
+###smoothed differences for hit rate
+
+#### function
+first set up  formula for the smoothed fits later needed for the cross correlation
+
+```{r crosscorrelation_formula, warning = FALSE, fig.height=4, fig.width=6}
+get_smooth_vector <- function(df, datainput, time_grid) {
+  # 1. Ensure eventtype is a standard factor (NOT ordered)
+  df$eventtype_ord <- factor(df$selection, levels = c("stimulus-cued", "top-down-cued"))
+  
+  # 2. Fit Model (Using 'bam' for speed if it's neural data)
+  if(datainput=='HR') {
+    # Behavioral HR GAM (Binomial)
+    m <- gam(hit ~ eventtype_ord +  
+               s(time, by = eventtype_ord, bs = "cs"), 
+             data = df, family = binomial(), method = "REML")
+    time_var <- "time"
+  } else if(datainput=='RT') {
+    # Behavioral RT GAM (Gaussian )
+    m <- gam(RT ~ eventtype_ord +  
+               s(time, by = eventtype_ord, bs = "cs"), 
+             data = df, family = gaussian(), method = "REML")
+    time_var <- "time"
+  } else if(datainput=='SSVEP') {
+    # Neural GAM (Gaussian)
+    m <- gam(SSVEP_mod ~ eventtype_ord +
+               s(time, by = eventtype_ord, bs = "cs"), 
+             data = df, family = gaussian(), method = "REML")
+    time_var <- "time"
+  }
+  
+  # predict values for the defined time points
+  predictions_df <- ggpredict(
+    m, 
+    terms= list(eventtype_ord = c("stimulus-cued", "top-down-cued"), time=common_times), 
+    back_transform = TRUE) %>%
+    as.data.frame()%>%
+    select(eventtype_ord = x, time = group, predicted) %>%
+    pivot_wider(
+      names_from = eventtype_ord,
+      values_from = predicted
+    ) %>%
+    mutate(
+      diff = `stimulus-cued` - `top-down-cued`
+    )
+  
+  
+  
+  # return(as.numeric(diff_smooth))
+  # return(as.numeric(predictions_df$diff))
+  return(predictions_df)
+}
+
+```
+
+#### display the cross correlation results and the shifted data
+
+<br> 
+```{r correlation_difference_smooths_display, warning = FALSE, fig.height=4, fig.width=6}
+#define behavioral and neural data
+beh_data <- DATA_Trials %>%
+  mutate(hit = ifelse(response == "hit", 1, 0),
+         selection = as.factor(eventtype2)) %>%
+  mutate(selection = case_when(
+    selection=="target_stimuluscued" ~ "stimulus-cued",
+    selection=="target_topdowncued" ~ "top-down-cued"),
+    time = eventonsettimes)%>%
+  dplyr::select(participant, selection, time, hit)
+
+
+
+neur_data <-  DataIn3 %>%
+  mutate(selection = case_when(
+    condition=="stimuluscued" ~ "stimulus-cued",
+    condition=="topdowncued" ~ "top-down-cued"))%>%
+  filter(selection=="stimulus-cued"|selection=="top-down-cued")%>%
+  dplyr::select(participant, selection, time, SSVEP_mod)
+
+
+
+# set up time windows for analysis
+# Ensure the time range covers both datasets
+common_times <- seq(min(DATA_Trials$eventonsettimes),
+                    max(DATA_Trials$eventonsettimes),
+                    length.out = 100)
+
+
+#  extract data
+beh_pred <- get_smooth_vector(beh_data, datainput = 'HR', time_grid = common_times)
+neu_pred <- get_smooth_vector(neur_data, datainput = 'SSVEP', time_grid = common_times)
+
+
+# Z-score both for visualization
+plot_data <- data.frame(
+  time = common_times,
+  Behavior = scale(beh_pred$diff),
+  SSVEP = scale(neu_pred$diff)
+)
+
+ggplot(plot_data, aes(x = time)) +
+  geom_line(aes(y = Behavior, color = "Behavioral Diff (Hit Rate)"), size = 1.2) +
+  geom_line(aes(y = SSVEP, color = "Neural Diff (SSVEP)"), size = 1.2, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Matching Dynamics: Difference Smooths",
+       subtitle = "Z-scored differences (Stimulus-Cued minus Top-Down)",
+       y = "Standardized Difference",
+       x = "Time (s)",
+       color = "Modality") +
+  scale_color_manual(values = c("#E41A1C", "#377EB8"))
+
+### cross correlation
+# time: the time grid
+# Behavior: Z-scored difference smooth (hit rate)
+# SSVEP: Z-scored difference smooth (neural)
+
+# Extract the vectors
+beh_vec <- plot_data$Behavior
+neu_vec <- plot_data$SSVEP
+
+# Calculate the sampling interval (needed to convert 'lags' to 'milliseconds')
+dt <- plot_data$time[2] - plot_data$time[1]
+
+# Run the cross-correlation
+# lag.max limits how far left/right we look (e.g., 50 bins)
+ccf_result <- ccf(neu_vec, beh_vec, lag.max = 50, plot = FALSE)
+
+# Convert results to a data frame for ggplot
+ccf_df <- data.frame(
+  Lag_Bins = ccf_result$lag,
+  Lag_s = ccf_result$lag * dt,
+  Correlation = ccf_result$acf
+)
+
+# Find the lag with the maximum correlation
+max_lag_s <- ccf_df$Lag_s[which.max(ccf_df$Correlation)]
+max_cor <- max(ccf_df$Correlation)
+
+cat("The strongest match occurs when the Brain leads Behavior by", abs(max_lag_s), "s\n")
+
+ggplot(ccf_df, aes(x = Lag_s, y = Correlation)) +
+  geom_segment(aes(xend = Lag_s, yend = 0), color = "steelblue") +
+  geom_point(color = "darkblue") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") + # Zero lag line
+  geom_vline(xintercept = max_lag_s, color = "darkgreen", size = 1) + # Peak lag
+  theme_minimal() +
+  labs(title = "Cross-Correlation: SSVEP vs. Behavior",
+       subtitle = paste("Peak correlation of", round(max_cor, 2), "at", max_lag_s, "s lag"),
+       x = "Lag (s) [Negative = Brain leads Behavior]",
+       y = "Cross-Correlation Coefficient")
+
+
+
+# do cross correlation and plot
+# 1. Determine the shift in terms of bins/indices
+# If max_lag_s is -150 and dt is 10, shift is -15 bins
+shift_bins <- round(max_lag_s / dt)
+
+# 2. Create the shifted data
+# Behavior is shifted "backwards" to align with the earlier Neural signal
+
+# Manual shift 
+shift_vec <- function(x, n) {
+  if (n == 0) return(x)
+  if (n > 0) return(c(rep(NA, n), head(x, -n))) # Shift right
+  return(c(tail(x, n), rep(NA, abs(n))))        # Shift left
+}
+
+plot_data$Behavior_Shifted <- shift_vec(plot_data$Behavior, shift_bins)
+
+# 3. Plot the alignment
+ggplot(plot_data, aes(x = time)) +
+  geom_line(aes(y = SSVEP, color = "Neural Difference"), size = 1.2, linetype = "dashed") +
+  geom_line(aes(y = Behavior, color = "Behavioral Difference (Original)"), size = 1.2) +
+  geom_line(aes(y = Behavior_Shifted, color = "Behavioral Difference (Lag-Corrected)"), size = 1.2) +
+  theme_minimal() +
+  labs(title = "Lag-Corrected Alignment",
+       subtitle = paste("Behavior shifted by", max_lag_s, "ms to match Neural dynamics"),
+       y = "Z-scored Difference", x = "Time (s)") +
+  scale_color_manual(values = c("orange","#E41A1C", "#377EB8"))
+
+```
+
+#### calculate cross correlation with permutation statistics
+
+```{r calc_crosscorrelation_difference_smooths_permutation, warning = FALSE, fig.height=4, fig.width=6}
+
+# define data
+
+run_permutation <- FALSE  # Set to TRUE to run, FALSE to load from disk
+results_filename <- "GAM_Permutation_Results.RData"
+n_perm <- 5000 #500 
+
+if (run_permutation) {
+  # --- 2. RUN THE LOOP ---
+  cat("Running permutations... this may take a while.\n")
+  
+  n_perm <- 5000 #500 
+  null_ccfs <- matrix(NA, nrow = n_perm, ncol = 101) # 101 is default for lag.max=50
+  s_beh_perm  <- matrix(NA, nrow = n_perm, ncol = length(common_times)) # 101 is default for lag.max=50
+  s_neu_perm  <- s_beh_perm
+  s_beh_perm_z <- s_beh_perm
+  s_neu_perm_z <- s_beh_perm
+  
+  # df <- beh_data
+  
+  
+  # # troubleshooting
+  # test_diff <- get_diff_smooth_vector(beh_data, is_behavioral = TRUE, time_grid = common_times)
+  # test_diff <- get_diff_smooth_vector(neur_data, is_behavioral = FALSE, time_grid = common_times)
+  
+  for(i in 1:n_perm) {
+    # Shuffle labels
+    shuff_beh <- beh_data %>% 
+      mutate(selection = sample(selection))
+    shuff_neu <- neur_data  %>% 
+      mutate(selection = sample(selection))
+    
+    # Extract difference smooths for the shuffled data
+    s_beh <- get_smooth_vector(shuff_beh, datainput = 'HR', common_times)
+    s_neu <- get_smooth_vector(shuff_neu, datainput = 'SSVEP', common_times)
+    
+    # Standardize (Z-score) before CCF
+    s_beh_z <- as.numeric(scale(s_beh$diff))
+    s_neu_z <- as.numeric(scale(s_neu$diff))
+    
+    # Run CCF
+    res <- ccf(s_neu_z, s_beh_z, lag.max = 50, plot = FALSE)
+    null_ccfs[i, ] <- res$acf
+    s_beh_perm[i, ] <- s_beh$diff
+    s_neu_perm[i, ] <- s_neu$diff
+    s_beh_perm_z[i, ] <- s_beh_z
+    s_neu_perm_z[i, ] <- s_neu_z
+    
+    if(i %% 50 == 0) cat("Completed permutation", i, "\n")
+  }
+  
+  # --- 3. SAVE TO DISK ---
+  save(null_ccfs, s_beh_perm, s_neu_perm, s_beh_perm_z, s_neu_perm_z, 
+       file = results_filename)
+  cat("Permutations complete. Results saved to:", results_filename, "\n")
+} else {
+  # --- 4. LOAD PREVIOUSLY SAVED DATA ---
+  if (file.exists(results_filename)) {
+    load(results_filename)
+    cat("Loaded permutation results from:", results_filename, "\n")
+  } else {
+    stop("Switch is set to 'FALSE' but the results file was not found! Please set switch to 'TRUE' to run permutations once.")
+  }
+}
+# Calculate 95% Confidence Ribbon
+ccf_df$lower_CI <- apply(null_ccfs, 2, quantile, probs = 0.025)
+ccf_df$upper_CI <- apply(null_ccfs, 2, quantile, probs = 0.975)
 
 
 ```
 
-<br> 
+#### plot cross correlation with statistics
 
-### Control Analysis: Are there differences in the distributions of event times for both cueing conditons?
+```{r plot_crosscorrelation_difference_smooths_permutation, warning = FALSE, fig.height=4, fig.width=6}
 
-Idea: can we really compare primed and non-primed events? Are their distributions of presentation times comparable?
+# Calculate Montecarlo p-values
+obs_acf <- as.numeric(ccf_result$acf) # Length is e.g., 101
 
-Rationale: Can the eventtype be predicted by the presentation time? If presentation time was comparable, it shouldn't be a predictor.
+# 2. Calculate the p-value for each lag
+# We compare the absolute values (two-tailed test)
+# 'abs(null_ccfs)' is [n_perm x 101]
+# 'abs(obs_acf)' is [101]<
+# R will recycle obs_acf across the rows of null_ccfs automatically
+greater_than_obs <- sweep(abs(null_ccfs), 2, abs(obs_acf), ">=")
 
-eventtype2 ~ eventonsettimes + (1 | participant)
+# 3. Monte Carlo p-value formula: (Count + 1) / (N + 1)
+# colSums gives us one count per lag
+p_values <- (colSums(greater_than_obs) + 1) / (n_perm + 1)
 
-<br> 
-```{r stat_hitxpresentationtime_distr_control, fig.show = "hide", warning = FALSE, fig.height=4, fig.width=10}
-GLMEventType_full <- DATA_Trials %>%
-  mutate(eventtype2 = as.factor(eventtype2)) %>%
-  glmer(eventtype2 ~ eventonsettimes + (1 | participant),data=., family = binomial)
+# 4. Add to your results data frame
+ccf_df$p_val <- p_values
 
 
-# Display the summary of the full model + Wald test
-# summary(GLMEventType_full)
+# --- 1. Prepare Permutation Data ---
+# Function to convert matrix to long format
+matrix_to_long <- function(mat, modality_name, time_vec) {
+  as.data.frame(mat) %>%
+    mutate(PermID = row_number()) %>%
+    pivot_longer(cols = -PermID, names_to = "TimeBin", values_to = "Value") %>%
+    mutate(
+      # Convert TimeBin (e.g., "V1") to actual time values
+      Time = time_vec[as.numeric(gsub("V", "", TimeBin))],
+      Modality = modality_name,
+      Type = "Permuted"
+    )
+}
 
-# Display the summary of the full model + Wald test
-GLMEventType_full %>%
-  tidy() %>%
-  kable(escape = F, digits=3,
-        caption = paste0("Likelihood ratio test via anova | display of full model:<br>", 
-                    deparse(formula(GLMEventType_full)))) %>%
-  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8))
+perm_beh_long <- matrix_to_long(s_beh_perm, "Behavior (Hit Rate)", common_times)
+perm_neu_long <- matrix_to_long(s_neu_perm, "Neural (SSVEP)", common_times)
+perm_beh_long_z <- matrix_to_long(s_beh_perm_z, "Behavior (Hit Rate)", common_times)
+perm_neu_long_z <- matrix_to_long(s_neu_perm_z, "Neural (SSVEP)", common_times)
+
+# Combine them
+perm_data_all <- bind_rows(perm_beh_long, perm_neu_long)
+perm_data_all_z <- bind_rows(perm_beh_long_z, perm_neu_long_z)
+
+# --- 2. Prepare Observed Data ---
+obs_diff_beh_z <- as.numeric(scale(get_smooth_vector(beh_data, datainput = 'HR', common_times)$diff))
+obs_diff_neu_z <- as.numeric(scale(get_smooth_vector(neur_data, datainput = 'SSVEP', common_times)$diff))
+obs_diff_beh <- as.numeric(get_smooth_vector(beh_data, datainput = 'HR', common_times)$diff)
+obs_diff_neu <- as.numeric(get_smooth_vector(neur_data, datainput = 'SSVEP', common_times)$diff)
+
+obs_data_all <- data.frame(
+  Time = rep(common_times, 2),
+  Value_z = c(obs_diff_beh_z, obs_diff_neu_z), # Use the Z-scored versions
+  Value = c(obs_diff_beh, obs_diff_neu), # Use the Z-scored versions
+  Modality = rep(c("Behavior (Hit Rate)", "Neural (SSVEP)"), each = length(common_times)),
+  Type = "Observed"
+)
+
+ggplot() +
+  # Plot the Permuted Lines (Spaghetti)
+  geom_line(data = perm_data_all, 
+            aes(x = Time, y = Value, group = interaction(PermID, Modality)), 
+            color = "gray80", alpha = 0.2, size = 0.5) +
+  
+  # Plot the Observed Line (Bold)
+  geom_line(data = obs_data_all, 
+            aes(x = Time, y = Value, color = Modality), 
+            size = 1.2) +
+  
+  # Facet by Modality to see them side-by-side
+  facet_wrap(~Modality, scales = "free_y") +
+  
+  # Styling
+  theme_minimal() +
+  scale_color_manual(values = c("Behavior (Hit Rate)" = "#d6604d", "Neural (SSVEP)" = "#4393c3")) +
+  labs(
+    title = "Observed Dynamics vs. Null Distribution",
+    subtitle = "Gray lines represent 5000 permutations with shuffled condition labels",
+    x = "Time (s)",
+    y = "Difference Smooth in measurement units",
+    color = "Modality"
+  ) +
+  theme(legend.position = "none") # Facet labels already identify the plots
+
+ggplot() +
+  # Plot the Permuted Lines (Spaghetti)
+  geom_line(data = perm_data_all_z, 
+            aes(x = Time, y = Value, group = interaction(PermID, Modality)), 
+            color = "gray80", alpha = 0.2, size = 0.5) +
+  
+  # Plot the Observed Line (Bold)
+  geom_line(data = obs_data_all, 
+            aes(x = Time, y = Value_z, color = Modality), 
+            size = 1.2) +
+  
+  # Facet by Modality to see them side-by-side
+  facet_wrap(~Modality, scales = "free_y") +
+  theme_minimal() +
+  scale_color_manual(values = c("Behavior (Hit Rate)" = "#d6604d", "Neural (SSVEP)" = "#4393c3")) +
+  labs(
+    title = "Observed Dynamics vs. Null Distribution",
+    subtitle = "Gray lines represent 5000 permutations with shuffled condition labels",
+    x = "Time (s)",
+    y = "z scored Difference Smooth",
+    color = "Modality"
+  ) +
+  theme(legend.position = "none") # Facet labels already identify the plots
+
+
+
+ggplot(ccf_df, aes(x = Lag_s, y = Correlation)) +
+  # The Null Distribution Ribbon (from permutations)
+  geom_ribbon(aes(ymin = lower_CI, ymax = upper_CI), fill = "grey80", alpha = 0.5) +
+  # Zero lines for reference
+  geom_hline(yintercept = 0, color = "black", size = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  # The observed cross-correlation
+  geom_line(color = "#2166ac", size = 1) +
+  # Highlight the peak
+  # Highlight significant points where p < 0.05
+  geom_point(data = subset(ccf_df, p_val < 0.05), 
+             aes(x = Lag_s, y = Correlation), 
+             color = "#b2182b", size = 2) +
+  geom_point(aes(x = max_lag_s, y = max_cor), color = "red", size = 3) +
+  theme_minimal() +
+  labs(
+    title = "Cross-Correlation: SSVEP vs. Behavior",
+    subtitle = c(subtitle = paste("Peak correlation of", round(max_cor, 3), "at", max_lag_s, "s lag with p = ", ccf_df$p_val[which.max(ccf_df$Correlation)],
+                                  "\nGrey ribbon = 95% null distribution (permutation-based)")),
+    x = "Lag (s) [Shift of Behavior relativ to SSVEP]",
+    y = "Cross-Correlation (r)"
+  )
+
+
 
 ```
 
-<br> 
+###smoothed differences for reaction times
 
-### Control Analysis: Is the sequential modulation simply capturing a sequential strategy in shifting attention by the to be learned cue?
-
-Idea: Can the sequential modulation be solely attributed to the functional classification primed vs non-primed? Or could an alternative account state that the sequential modulation is capturing a sequential strategy in shifting attention by the to be learned cue? Does it even make a difference? If it is learning related, maybe the effect is time-on-task dependent and initially higher than later on.
-
-
-Rationale: Do a time-on-task resolved analysis
-
-eventtype2 ~ eventonsettimes + (1 | participant)
+#### display the cross correlation results and the shifted data
 
 <br> 
-```{r stat_control_learning, fig.height=4, fig.width=8, warning = FALSE}
-data_bin <- DATA_Trials %>%
-  mutate(hit = ifelse(response == "hit", 1, 0))%>%
-  group_by(participant)%>%
-  # mutate(time_bin = cut(trialnumber,
-  #                       breaks = seq(0, max(trialnumber), by = 2),
-  #                       labels = FALSE)) %>%
-  mutate(time_bin = as.factor(ntile(trialnumber, 2))) %>% 
-  ungroup()
-
-
-
-ggplot(data_bin, aes(x = eventonsettimes, y = hit, color = eventtype2)) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "loess", span = 0.3, se = TRUE) +
-  facet_grid(.~time_bin)+
-  labs(x = "Event Onset Time", y = "Probability of hits", 
-       title = "Smoothed Probability of hits | single sub data") +
-  theme_minimal()
-
-# ggplot(data_avg, aes(x = eventonsettimes, y = hit_rate, color = eventtype2)) +
-#   # geom_line(alpha = 0.4) +
-#   stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-#   geom_smooth(method = "loess", se = TRUE, span = 0.3) +
-#   labs(x = "Event Onset Time", y = "Hit Rate", 
-#        title = "Smoothed Hit Rates Over Time by Condition | averaged across subjects hit rates") +
-#   theme_minimal()
-
-
-ggplot(data_bin, aes(x = eventonsettimes, y = hit, color = eventtype2)) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +
-  facet_grid(.~time_bin)+
-  labs(x = "Event Onset Time", y = "Probability of hits", 
-       title = "GAM Smoothed Probability of Hits by Condition") +
-  theme_minimal()
-
-
-
-data_bin %>%
+```{r correlation_difference_smooths_display_RT, warning = FALSE, fig.height=4, fig.width=6}
+#define behavioral and neural data
+beh_data <- DATA_Trials %>%
   filter(response=='hit')%>%
-  ggplot(aes(x = eventonsettimes, y = RT, color = eventtype2)) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "loess", se = TRUE, span = 0.3) +    # kernel smoothed average
-  facet_grid(.~time_bin)+
+  mutate(selection = case_when(
+    eventtype2=="target_stimuluscued" ~ "stimulus-cued",
+    eventtype2=="target_topdowncued" ~ "top-down-cued"),
+    time = eventonsettimes)%>%
+  dplyr::select(participant, selection, time, RT)
+
+neur_data <-  DataIn3 %>%
+  mutate(selection = case_when(
+    condition=="stimuluscued" ~ "stimulus-cued",
+    condition=="topdowncued" ~ "top-down-cued"))%>%
+  filter(selection=="stimulus-cued"|selection=="top-down-cued")%>%
+  dplyr::select(participant, selection, time, SSVEP_mod)
+
+# set up time windows for analysis
+# Ensure the time range covers both datasets
+common_times <- seq(min(DATA_Trials$eventonsettimes),
+                    max(DATA_Trials$eventonsettimes),
+                    length.out = 100)
+# common_times <- all_timepoints # use time points as above
+
+
+#  extract data
+beh_pred <- get_smooth_vector(beh_data, datainput = 'RT', time_grid = common_times)
+neu_pred <- get_smooth_vector(neur_data, datainput = 'SSVEP', time_grid = common_times)
+
+
+# Z-score both for visualization
+plot_data <- data.frame(
+  time = common_times,
+  Behavior = scale(beh_pred$diff),
+  SSVEP = scale(neu_pred$diff)
+)
+
+ggplot(plot_data, aes(x = time)) +
+  geom_line(aes(y = Behavior, color = "Behavioral Diff (Reaction Time)"), size = 1.2) +
+  geom_line(aes(y = SSVEP, color = "Neural Diff (SSVEP)"), size = 1.2, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Matching Dynamics: Difference Smooths",
+       subtitle = "Z-scored differences (Stimulus-Cued minus Top-Down)",
+       y = "Standardized Difference",
+       x = "Time (s)",
+       color = "Modality") +
+  scale_color_manual(values = c("#E41A1C", "#377EB8"))
+
+
+### cross correlation
+# time: the time grid
+# Behavior: Z-scored difference smooth (hit rate)
+# SSVEP: Z-scored difference smooth (neural)
+
+# Extract the vectors
+beh_vec <- plot_data$Behavior
+neu_vec <- plot_data$SSVEP
+
+# Calculate the sampling interval (needed to convert 'lags' to 'milliseconds')
+dt <- plot_data$time[2] - plot_data$time[1]
+
+# Run the cross-correlation
+# lag.max limits how far left/right we look (e.g., 50 bins)
+ccf_result_RT <- ccf(neu_vec, beh_vec, lag.max = 50, plot = FALSE)
+
+# Convert results to a data frame for ggplot
+ccf_df_RT <- data.frame(
+  Lag_Bins = ccf_result_RT$lag,
+  Lag_s = ccf_result_RT$lag * dt,
+  Correlation = ccf_result_RT$acf
+)
+
+# Find the lag with the maximum correlation
+max_lag_s <- ccf_df_RT$Lag_s[which.max(abs(ccf_df_RT$Correlation))]
+max_cor <- ccf_df_RT$Correlation[which.max(abs(ccf_df_RT$Correlation))]
+
+cat("The strongest match occurs when the Brain leads Behavior by", abs(max_lag_s), "s\n")
+
+ggplot(ccf_df_RT, aes(x = Lag_s, y = Correlation)) +
+  geom_segment(aes(xend = Lag_s, yend = 0), color = "steelblue") +
+  geom_point(color = "darkblue") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") + # Zero lag line
+  geom_vline(xintercept = max_lag_s, color = "darkgreen", size = 1) + # Peak lag
+  theme_minimal() +
+  labs(title = "Cross-Correlation: SSVEP vs. Behavior",
+       subtitle = paste("Peak correlation of", round(max_cor, 2), "at", max_lag_s, "s lag"),
+       x = "Lag (s) [Negative = Brain leads Behavior]",
+       y = "Cross-Correlation Coefficient")
+
+
+
+# do cross correlation and plot
+# 1. Determine the shift in terms of bins/indices
+# If max_lag_s is -150 and dt is 10, shift is -15 bins
+shift_bins <- round(max_lag_s / dt)
+
+# 2. Create the shifted data
+# # We shift Behavior "backwards" to align with the earlier Neural signal
+
+# Manual shift 
+shift_vec <- function(x, n) {
+  if (n == 0) return(x)
+  if (n > 0) return(c(rep(NA, n), head(x, -n))) # Shift right
+  return(c(tail(x, n), rep(NA, abs(n))))        # Shift left
+}
+
+plot_data$Behavior_Shifted <- shift_vec(plot_data$Behavior, shift_bins)
+
+# 3. Plot the alignment
+ggplot(plot_data, aes(x = time)) +
+  geom_line(aes(y = SSVEP, color = "Neural Difference"), size = 1.2, linetype = "dashed") +
+  geom_line(aes(y = Behavior, color = "Behavioral Difference (Original)"), size = 1.2) +
+  geom_line(aes(y = Behavior_Shifted, color = "Behavioral Difference (Lag-Corrected)"), size = 1.2) +
+  theme_minimal() +
+  labs(title = "Lag-Corrected Alignment",
+       subtitle = paste("Behavior shifted by", max_lag_s, "ms to match Neural dynamics"),
+       y = "Z-scored Difference", x = "Time (s)") +
+  scale_color_manual(values = c("orange","#E41A1C", "#377EB8"))
+
+```
+
+#### calculate cross correlation with permutation statistics
+
+```{r calc_crosscorrelation_difference_smooths_permutation, warning = FALSE, fig.height=4, fig.width=6}
+
+# define data
+
+run_permutation <- FALSE  # Set to TRUE to run, FALSE to load from disk
+results_filename <- "GAM_Permutation_Results_RS.RData"
+n_perm <- 5000 #500 
+
+if (run_permutation) {
+  # --- 2. RUN THE LOOP ---
+  cat("Running permutations... this may take a while.\n")
+  
+  n_perm <- 5000 #500 
+  null_ccfs_RT <- matrix(NA, nrow = n_perm, ncol = 101) # 101 is default for lag.max=50
+  s_beh_perm_RT  <- matrix(NA, nrow = n_perm, ncol = length(common_times)) # 101 is default for lag.max=50
+  s_neu_perm_RT  <- s_beh_perm_RT
+  s_beh_perm_RT_z <- s_beh_perm_RT
+  s_neu_perm_RT_z <- s_beh_perm_RT
+  
+  # df <- beh_data
+  
+  
+  # # troubleshooting
+  # test_diff <- get_diff_smooth_vector(beh_data, is_behavioral = TRUE, time_grid = common_times)
+  # test_diff <- get_diff_smooth_vector(neur_data, is_behavioral = FALSE, time_grid = common_times)
+  
+  for(i in 1:n_perm) {
+    # Shuffle labels
+    shuff_beh <- beh_data %>% 
+      mutate(selection = sample(selection))
+    shuff_neu <- neur_data  %>% 
+      mutate(selection = sample(selection))
+    
+    # Extract difference smooths for the shuffled data
+    s_beh <- get_smooth_vector(shuff_beh, datainput = 'RT', common_times)
+    s_neu <- get_smooth_vector(shuff_neu, datainput = 'SSVEP', common_times)
+    
+    # Standardize (Z-score) before CCF
+    s_beh_z <- as.numeric(scale(s_beh$diff))
+    s_neu_z <- as.numeric(scale(s_neu$diff))
+    
+    # Run CCF
+    res <- ccf(s_neu_z, s_beh_z, lag.max = 50, plot = FALSE)
+    null_ccfs_RT[i, ] <- res$acf
+    s_beh_perm_RT[i, ] <- s_beh$diff
+    s_neu_perm_RT[i, ] <- s_neu$diff
+    s_beh_perm_RT_z[i, ] <- s_beh_z
+    s_neu_perm_RT_z[i, ] <- s_neu_z
+    
+    if(i %% 50 == 0) cat("Completed permutation", i, "\n")
+  }
+  
+  # --- 3. SAVE TO DISK ---
+  save(null_ccfs_RT, s_beh_perm_RT, s_neu_perm_RT, s_beh_perm_RT_z, s_neu_perm_RT_z, 
+       file = results_filename)
+  cat("Permutations complete. Results saved to:", results_filename, "\n")
+} else {
+  # --- 4. LOAD PREVIOUSLY SAVED DATA ---
+  if (file.exists(results_filename)) {
+    load(results_filename)
+    cat("Loaded permutation results from:", results_filename, "\n")
+  } else {
+    stop("Switch is set to 'FALSE' but the results file was not found! Please set switch to 'TRUE' to run permutations once.")
+  }
+}
+# Calculate 95% Confidence Ribbon
+ccf_df_RT$lower_CI <- apply(null_ccfs_RT, 2, quantile, probs = 0.025)
+ccf_df_RT$upper_CI <- apply(null_ccfs_RT, 2, quantile, probs = 0.975)
+
+
+```
+
+#### plot cross correlation with statistics
+
+```{r plot_crosscorrelation_difference_smooths_permutation, warning = FALSE, fig.height=4, fig.width=6}
+
+# Calculate Montecarlo p-values
+obs_acf_RT <- as.numeric(ccf_result_RT$acf) # Length is e.g., 101
+
+# 2. Calculate the p-value for each lag
+# We compare the absolute values (two-tailed test)
+# 'abs(null_ccfs)' is [n_perm x 101]
+# 'abs(obs_acf)' is [101]
+# R will recycle obs_acf across the rows of null_ccfs automatically
+greater_than_obs <- sweep(abs(null_ccfs_RT), 2, abs(obs_acf_RT), ">=")
+
+# 3. Monte Carlo p-value formula: (Count + 1) / (N + 1)
+# colSums gives us one count per lag
+p_values <- (colSums(greater_than_obs) + 1) / (n_perm + 1)
+
+# 4. Add to your results data frame
+ccf_df_RT$p_val <- p_values
+
+
+# --- 1. Prepare Permutation Data ---
+# Function to convert matrix to long format
+matrix_to_long <- function(mat, modality_name, time_vec) {
+  as.data.frame(mat) %>%
+    mutate(PermID = row_number()) %>%
+    pivot_longer(cols = -PermID, names_to = "TimeBin", values_to = "Value") %>%
+    mutate(
+      # Convert TimeBin (e.g., "V1") to actual time values
+      Time = time_vec[as.numeric(gsub("V", "", TimeBin))],
+      Modality = modality_name,
+      Type = "Permuted"
+    )
+}
+
+perm_beh_long <- matrix_to_long(s_beh_perm_RT, "Behavior (Hit Rate)", common_times)
+perm_neu_long <- matrix_to_long(s_neu_perm_RT, "Neural (SSVEP)", common_times)
+perm_beh_long_z <- matrix_to_long(s_beh_perm_RT_z, "Behavior (Hit Rate)", common_times)
+perm_neu_long_z <- matrix_to_long(s_neu_perm_RT_z, "Neural (SSVEP)", common_times)
+
+# Combine them
+perm_data_all <- bind_rows(perm_beh_long, perm_neu_long)
+perm_data_all_z <- bind_rows(perm_beh_long_z, perm_neu_long_z)
+
+# --- 2. Prepare Observed Data ---
+obs_diff_beh_z <- as.numeric(scale(get_smooth_vector(beh_data, datainput = 'RT', common_times)$diff))
+obs_diff_neu_z <- as.numeric(scale(get_smooth_vector(neur_data, datainput = 'SSVEP', common_times)$diff))
+obs_diff_beh <- as.numeric(get_smooth_vector(beh_data, datainput = 'RT', common_times)$diff)
+obs_diff_neu <- as.numeric(get_smooth_vector(neur_data, datainput = 'SSVEP', common_times)$diff)
+
+
+obs_data_all <- data.frame(
+  Time = rep(common_times, 2),
+  Value_z = c(obs_diff_beh_z, obs_diff_neu_z), # Use the Z-scored versions
+  Value = c(obs_diff_beh, obs_diff_neu), # Use the Z-scored versions
+  Modality = rep(c("Behavior (Hit Rate)", "Neural (SSVEP)"), each = length(common_times)),
+  Type = "Observed"
+)
+
+ggplot() +
+  # Plot the Permuted Lines (Spaghetti)
+  geom_line(data = perm_data_all, 
+            aes(x = Time, y = Value, group = interaction(PermID, Modality)), 
+            color = "gray80", alpha = 0.2, size = 0.5) +
+  
+  # Plot the Observed Line (Bold)
+  geom_line(data = obs_data_all, 
+            aes(x = Time, y = Value, color = Modality), 
+            size = 1.2) +
+  
+  # Facet by Modality to see them side-by-side
+  facet_wrap(~Modality, scales = "free_y") +
+  
+  # Styling
+  theme_minimal() +
+  scale_color_manual(values = c("Behavior (Hit Rate)" = "#d6604d", "Neural (SSVEP)" = "#4393c3")) +
   labs(
-    title = "Smoothed Average Reaction Times",
-    x = "eventonsettimes (s)",
-    y = "Reaction Time (ms)",
-    color = "Condition"
+    title = "Observed Dynamics vs. Null Distribution",
+    subtitle = "Gray lines represent 5000 permutations with shuffled condition labels",
+    x = "Time (s)",
+    y = "Difference Smooth in measurement units",
+    color = "Modality"
   ) +
-  theme_minimal()
+  theme(legend.position = "none") # Facet labels already identify the plots
 
-data_bin %>%
-  filter(response=='hit')%>%
-  ggplot(aes(x = eventonsettimes, y = RT, color = eventtype2)) +
-  stat_summary(fun = mean, geom = "point", alpha = 0.4) +  # mean RTs
-  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = TRUE) +    # kernel smoothed average
-  facet_grid(.~time_bin)+
+ggplot() +
+  # Plot the Permuted Lines (Spaghetti)
+  geom_line(data = perm_data_all_z, 
+            aes(x = Time, y = Value, group = interaction(PermID, Modality)), 
+            color = "gray80", alpha = 0.2, size = 0.5) +
+  
+  # Plot the Observed Line (Bold)
+  geom_line(data = obs_data_all, 
+            aes(x = Time, y = Value_z, color = Modality), 
+            size = 1.2) +
+  
+  # Facet by Modality to see them side-by-side
+  facet_wrap(~Modality, scales = "free_y") +
+  theme_minimal() +
+  scale_color_manual(values = c("Behavior (Hit Rate)" = "#d6604d", "Neural (SSVEP)" = "#4393c3")) +
   labs(
-    title = "GAM Smoothed Average Reaction Times",
-    x = "eventonsettimes (s)",
-    y = "Reaction Time (ms)",
-    color = "Condition"
+    title = "Observed Dynamics vs. Null Distribution",
+    subtitle = "Gray lines represent 5000 permutations with shuffled condition labels",
+    x = "Time (s)",
+    y = "z scored Difference Smooth",
+    color = "Modality"
   ) +
-  theme_minimal()
+  theme(legend.position = "none") # Facet labels already identify the plots
 
 
 
-# hit rates
-# Model with smoothers by condition
-model_gam_null <- data_bin%>%
-  mutate(eventtype2 = as.factor(eventtype2))%>%
-  gam(hit ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant, 
-                 data = ., family = binomial)
-# coef(model_gam_interaction)
+ggplot(ccf_df_RT, aes(x = Lag_s, y = Correlation)) +
+  # The Null Distribution Ribbon (from permutations)
+  geom_ribbon(aes(ymin = lower_CI, ymax = upper_CI), fill = "grey80", alpha = 0.5) +
+  # Zero lines for reference
+  geom_hline(yintercept = 0, color = "black", size = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  # The observed cross-correlation
+  geom_line(color = "#2166ac", size = 1) +
+  # Highlight the peak
+  # Highlight significant points where p < 0.05
+  geom_point(data = subset(ccf_df_RT, p_val < 0.05), 
+             aes(x = Lag_s, y = Correlation), 
+             color = "#b2182b", size = 2) +
+  geom_point(aes(x = max_lag_s, y = max_cor), color = "red", size = 3) +
+  theme_minimal() +
+  labs(
+    title = "Cross-Correlation: SSVEP vs. Behavior",
+    subtitle = c(subtitle = paste("Peak correlation of", round(max_cor, 3), "at", max_lag_s, "s lag with p = ", ccf_df_RT$p_val[which.max(abs(ccf_df_RT$Correlation))],
+                                  "\nGrey ribbon = 95% null distribution (permutation-based)")),
+    x = "Lag (s) [Shift of Behavior relativ to SSVEP]",
+    y = "Cross-Correlation (r)"
+  )
 
 
-
-model_gam_timeOntask <- data_bin%>%
-  mutate(
-    eventtype2 = as.factor(eventtype2),
-    time_bin   = as.factor(time_bin),
-    eventtype2_timebin = interaction(eventtype2, time_bin, drop = TRUE)
-  ) %>%
-  gam(hit ~ eventtype2*time_bin + 
-        s(eventonsettimes, by = eventtype2_timebin, bs = "cs") + 
-        participant, 
-                 data = ., family = binomial)
-
-plot(model_gam_timeOntask, pages = 1)
-# anova(model_gam_interaction)
-
-
-# plot_predictions(model_gam_timeOntask, condition = c('eventonsettimes', 'eventtype2_timebin'),
-#                  type = 'response') +
-#       labs(y = "Predicted probability of a hit",
-#            title = "Average smooth effect of eventonsettimes | GAM",
-#            subtitle = "Per priming condition")
-
-
-# Likelihood ratio test
-anova( model_gam_null, model_gam_timeOntask, test = "Chisq") %>%
-  tidy()%>%
-  # as.data.frame() %>%
-  # mutate(model = c('reduced model','full model')) %>%
-  # dplyr::select(model, `Resid. Df`:`Pr(>Chi)`)%>%
-  kbl(escape = F, digits=3,
-      caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
-  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
-
-
-
-
-# reaction times
-# Model with smoothers by condition
-model_gam_null <- data_bin%>%
-  filter(response=='hit')%>%
-  mutate(eventtype2 = as.factor(eventtype2))%>%
-  gam(RT ~ eventtype2 + s(eventonsettimes, by = eventtype2, bs = "cs") + participant, 
-                 data = .)
-# coef(model_gam_interaction)
-
-
-
-model_gam_timeOntask <- data_bin%>%
-  filter(response=='hit')%>%
-  mutate(
-    eventtype2 = as.factor(eventtype2),
-    time_bin   = as.factor(time_bin),
-    eventtype2_timebin = interaction(eventtype2, time_bin, drop = TRUE)
-  ) %>%
-  gam(RT ~ eventtype2*time_bin + 
-        s(eventonsettimes, by = eventtype2_timebin, bs = "cs") + 
-        participant, 
-                 data = .)
-
-
-plot(model_gam_timeOntask, pages = 1)
-# anova(model_gam_interaction)
-
-
-# plot_predictions(model_gam_timeOntask, condition = c('eventonsettimes', 'eventtype2_timebin'),
-#                  type = 'response') +
-#       labs(y = "RT",
-#            title = "Average smooth effect of eventonsettimes | GAM",
-#            subtitle = "Per priming condition")
-
-
-# Likelihood ratio test
-anova( model_gam_null, model_gam_timeOntask, test = "Chisq") %>%
-  tidy()%>%
-  # as.data.frame() %>%
-  # mutate(model = c('reduced model','full model')) %>%
-  # dplyr::select(model, `Resid. Df`:`Pr(>Chi)`)%>%
-  kbl(escape = F, digits=3,
-      caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:"))%>%
-        # caption = paste0("Likelihood ratio test via anova | comparing full and reduced model | GAM:<br>", 
-        #             paste(deparse(formula(model_gam_interaction)), collapse = " ")))%>%
-  kable_styling("striped", full_width = T, bootstrap_options = c("striped", "hover", "condensed", "responsive",font_size = 8,latex_options = "hold_position"))
 
 ```
