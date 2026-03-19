@@ -2102,7 +2102,7 @@ get_smooth_vector <- function(df, datainput, time_grid) {
 #### display the cross correlation results and the shifted data
 
 <br> 
-```{r correlation_difference_smooths_display, warning = FALSE, fig.height=4, fig.width=6}
+```{r correlation_difference_smooths_display, warning = FALSE, fig.height=3, fig.width=6}
 #define behavioral and neural data
 beh_data <- DATA_Trials %>%
   mutate(hit = ifelse(response == "hit", 1, 0),
@@ -2215,15 +2215,22 @@ shift_vec <- function(x, n) {
 plot_data$Behavior_Shifted <- shift_vec(plot_data$Behavior, shift_bins)
 
 # 3. Plot the alignment
-ggplot(plot_data, aes(x = time)) +
-  geom_line(aes(y = SSVEP, color = "Neural Difference"), size = 1.2, linetype = "dashed") +
+plotplot<-ggplot(plot_data, aes(x = time)) +
+  geom_line(aes(y = SSVEP, color = "Neural Difference"), size = 1.2) +
   geom_line(aes(y = Behavior, color = "Behavioral Difference (Original)"), size = 1.2) +
   geom_line(aes(y = Behavior_Shifted, color = "Behavioral Difference (Lag-Corrected)"), size = 1.2) +
-  theme_minimal() +
+  theme_light() +
   labs(title = "Lag-Corrected Alignment",
        subtitle = paste("Behavior shifted by", max_lag_s, "ms to match Neural dynamics"),
        y = "Z-scored Difference", x = "Time (s)") +
   scale_color_manual(values = c("orange","#E41A1C", "#377EB8"))
+
+savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", height = 3,width = 6,  unit = "in")
+savefig %<>%
+  fill_panel(plotplot, column = 1, row = 1)
+savefig
+
+# save_multi_panel_figure(savefig, "figures/Crosscorr_Curves_HRSSVEP.pdf")
 
 ```
 
@@ -2303,7 +2310,7 @@ ccf_df$upper_CI <- apply(null_ccfs, 2, quantile, probs = 0.975)
 
 #### plot cross correlation with statistics
 
-```{r plot_crosscorrelation_difference_smooths_permutation, warning = FALSE, fig.height=4, fig.width=6}
+```{r plot_crosscorrelation_difference_smooths_permutation, warning = FALSE, fig.height=3, fig.width=4}
 
 # Calculate Montecarlo p-values
 obs_acf <- as.numeric(ccf_result$acf) # Length is e.g., 101
@@ -2412,7 +2419,7 @@ ggplot() +
 
 
 
-ggplot(ccf_df, aes(x = Lag_s, y = Correlation)) +
+plotplot<-ggplot(ccf_df, aes(x = Lag_s, y = Correlation)) +
   # The Null Distribution Ribbon (from permutations)
   geom_ribbon(aes(ymin = lower_CI, ymax = upper_CI), fill = "grey80", alpha = 0.5) +
   # Zero lines for reference
@@ -2422,11 +2429,18 @@ ggplot(ccf_df, aes(x = Lag_s, y = Correlation)) +
   geom_line(color = "#2166ac", size = 1) +
   # Highlight the peak
   # Highlight significant points where p < 0.05
-  geom_point(data = subset(ccf_df, p_val < 0.05), 
-             aes(x = Lag_s, y = Correlation), 
-             color = "#b2182b", size = 2) +
+  geom_point(data = subset(ccf_df, p_val < 0.05),
+             aes(x = Lag_s, y = Correlation),
+             color = "#2166ac", size = 2) +
+  geom_segment(aes(x = max_lag_s,
+                 xend = max_lag_s,
+                 y = 0,
+                 yend = max_cor),
+             color = "red",
+             linewidth = 1) +
   geom_point(aes(x = max_lag_s, y = max_cor), color = "red", size = 3) +
-  theme_minimal() +
+  coord_cartesian(ylim = c(-1, 1)) +
+  theme_light() +
   labs(
     title = "Cross-Correlation: SSVEP vs. Behavior",
     subtitle = c(subtitle = paste("Peak correlation of", round(max_cor, 3), "at", max_lag_s, "s lag with p = ", ccf_df$p_val[which.max(ccf_df$Correlation)],
@@ -2435,8 +2449,12 @@ ggplot(ccf_df, aes(x = Lag_s, y = Correlation)) +
     y = "Cross-Correlation (r)"
   )
 
+savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", height = 3,width = 4,  unit = "in")
+savefig %<>%
+  fill_panel(plotplot, column = 1, row = 1)
+savefig
 
-
+# save_multi_panel_figure(savefig, "figures/Crosscorr_Histogram_HRSSVEP.pdf")
 ```
 
 ###smoothed differences for reaction times
@@ -2444,7 +2462,7 @@ ggplot(ccf_df, aes(x = Lag_s, y = Correlation)) +
 #### display the cross correlation results and the shifted data
 
 <br> 
-```{r correlation_difference_smooths_display_RT, warning = FALSE, fig.height=4, fig.width=6}
+```{r correlation_difference_smooths_display_RT, warning = FALSE, fig.height=3, fig.width=6}
 #define behavioral and neural data
 beh_data <- DATA_Trials %>%
   filter(response=='hit')%>%
@@ -2558,15 +2576,22 @@ shift_vec <- function(x, n) {
 plot_data$Behavior_Shifted <- shift_vec(plot_data$Behavior, shift_bins)
 
 # 3. Plot the alignment
-ggplot(plot_data, aes(x = time)) +
-  geom_line(aes(y = SSVEP, color = "Neural Difference"), size = 1.2, linetype = "dashed") +
+plotplot<-ggplot(plot_data, aes(x = time)) +
+  geom_line(aes(y = SSVEP, color = "Neural Difference"), size = 1.2) +
   geom_line(aes(y = Behavior, color = "Behavioral Difference (Original)"), size = 1.2) +
   geom_line(aes(y = Behavior_Shifted, color = "Behavioral Difference (Lag-Corrected)"), size = 1.2) +
-  theme_minimal() +
+  theme_light() +
   labs(title = "Lag-Corrected Alignment",
        subtitle = paste("Behavior shifted by", max_lag_s, "ms to match Neural dynamics"),
        y = "Z-scored Difference", x = "Time (s)") +
   scale_color_manual(values = c("orange","#E41A1C", "#377EB8"))
+
+savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", height = 3,width = 6,  unit = "in")
+savefig %<>%
+  fill_panel(plotplot, column = 1, row = 1)
+savefig
+
+# save_multi_panel_figure(savefig, "figures/Crosscorr_Curves_RTSSVEP.pdf")
 
 ```
 
@@ -2646,7 +2671,7 @@ ccf_df_RT$upper_CI <- apply(null_ccfs_RT, 2, quantile, probs = 0.975)
 
 #### plot cross correlation with statistics
 
-```{r plot_crosscorrelation_difference_smooths_permutation, warning = FALSE, fig.height=4, fig.width=6}
+```{r plot_crosscorrelation_difference_smooths_permutation, warning = FALSE, fig.height=3, fig.width=4}
 
 # Calculate Montecarlo p-values
 obs_acf_RT <- as.numeric(ccf_result_RT$acf) # Length is e.g., 101
@@ -2756,7 +2781,7 @@ ggplot() +
 
 
 
-ggplot(ccf_df_RT, aes(x = Lag_s, y = Correlation)) +
+plotplot <- ggplot(ccf_df_RT, aes(x = Lag_s, y = Correlation)) +
   # The Null Distribution Ribbon (from permutations)
   geom_ribbon(aes(ymin = lower_CI, ymax = upper_CI), fill = "grey80", alpha = 0.5) +
   # Zero lines for reference
@@ -2768,9 +2793,16 @@ ggplot(ccf_df_RT, aes(x = Lag_s, y = Correlation)) +
   # Highlight significant points where p < 0.05
   geom_point(data = subset(ccf_df_RT, p_val < 0.05), 
              aes(x = Lag_s, y = Correlation), 
-             color = "#b2182b", size = 2) +
+             color = "#2166ac", size = 2) +
+  geom_segment(aes(x = max_lag_s,
+                 xend = max_lag_s,
+                 y = 0,
+                 yend = max_cor),
+             color = "red",
+             linewidth = 1) +
   geom_point(aes(x = max_lag_s, y = max_cor), color = "red", size = 3) +
-  theme_minimal() +
+  coord_cartesian(ylim = c(-1, 1))+
+  theme_light() +
   labs(
     title = "Cross-Correlation: SSVEP vs. Behavior",
     subtitle = c(subtitle = paste("Peak correlation of", round(max_cor, 3), "at", max_lag_s, "s lag with p = ", ccf_df_RT$p_val[which.max(abs(ccf_df_RT$Correlation))],
@@ -2780,5 +2812,10 @@ ggplot(ccf_df_RT, aes(x = Lag_s, y = Correlation)) +
   )
 
 
+savefig <- multi_panel_figure(columns = 1, rows = 1, panel_label_type = "none", height = 3,width = 4,  unit = "in")
+savefig %<>%
+  fill_panel(plotplot, column = 1, row = 1)
+savefig
 
+# save_multi_panel_figure(savefig, "figures/Crosscorr_Histogram_RTSSVEP.pdf")
 ```
