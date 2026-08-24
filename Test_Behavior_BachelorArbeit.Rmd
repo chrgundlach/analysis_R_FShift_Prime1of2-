@@ -1,0 +1,161 @@
+---
+title: "behavioral analysis"
+author: "Christopher"
+date: "16 6 2025"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    theme: flatly
+    df_print: paged
+---
+
+
+
+```{r load_package, message = FALSE, warning = FALSE}
+library(lme4)
+library(readxl)
+library(tidyverse)
+# library(data.table)
+# library(afex)
+# library(broom)
+# library(apa)
+library(kableExtra)
+# library(lmerTest)
+# library(pbkrtest)
+# library(effects)
+# library(visreg)
+# library(sjPlot)
+library(broom.mixed)
+# library(pander)
+# library(mediation)
+# library(multcomp)
+# library(multcompView)
+# library(magrittr)
+library(multipanelfigure)
+library(ggbeeswarm)
+# library(lsmeans)
+library(BayesFactor)
+library(ggpubr)
+# library(gpairs)
+# library(DescTools)
+library(cowplot)
+# library(ggpol)
+# library(psych)
+library(ggdist)
+# library(dplyr)
+# 
+library(mgcv)
+library(tidyverse)       # Tidy and flexible data manipulation
+library(marginaleffects) # Compute conditional and marginal effects
+# library(patchwork)       # Combining ggplot objects
+library(gratia)
+# 
+library(ggeffects)
+# 
+library(report)
+library(emmeans)
+
+
+source('C:/Dropboxdata/Dropbox/work/R-statistics/general_functions/RainCloudPlots/tutorial_R/R_rainclouds.R')
+
+
+
+
+
+# broad cluster
+# CSD based normalized to pre-cue baseline in %
+# 
+DATAPath1 = "C:/Dropboxdata/Dropbox/work/documents/Betreuung_Studierende/BA_Schlehufer_FeaturePriming/Daten/behavior_events.csv"
+
+
+
+
+
+options(scipen=1, digits=5)
+```
+<style type="text/css">
+.main-container {
+  max-width: 1800px !important;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+## Prepare data  
+<br>  
+
+1.  Read in data: 
+    + `r DATAPath1`
+    + `r DATAPath1`
+    
+<br>  
+
+```{r load_data,results = "hide", fig.show = "hide", warning = FALSE}
+# read in data
+DataIn1 <- read_csv(DATAPath1)
+head(DataIn1)
+str(DataIn1)
+
+
+```
+
+
+
+
+
+1.  Prepare new dataset(s)...
+<br>  
+
+```{r prepare_data1, results = "hide", fig.show = "hide", warning = FALSE}
+DATA_Trials <- DataIn1%>%
+  filter(eventtype=="target") %>%
+  mutate(timewindow = case_when(
+    eventonsettimes >= 0.25 & eventonsettimes <= 0.75 ~ "early",
+    eventonsettimes >= 1.25 & eventonsettimes <= 0.75 ~ "late",
+    TRUE ~ "other"
+  ))
+
+
+```
+
+```{r cite data, results = "hide", fig.show = "hide", warning = FALSE}
+# session <- sessionInfo()
+# r <- report(session)
+# r
+# summary(r)
+# as.data.frame(r)
+# summary(as.data.frame(r))
+
+```
+
+
+
+```{r first analysis, results = "hide", fig.show = "hide", warning = FALSE}
+
+Targets_summary <- DATA_Trials%>%
+  group_by(participant, eventtype2, timewindow, response)%>%
+  summarise(freq = n(), .groups = "drop")%>%
+  complete(participant, eventtype2, timewindow, response, fill = list(freq = 0))
+
+Targets_summary %>%
+  group_by(participant) %>%
+  summarise(total_freq = n())
+
+Targets_summary <- na.omit(Targets_summary)
+
+Targets_percent <- Targets_summary %>%
+    group_by(participant, eventtype2, timewindow) %>%
+  mutate(percent = freq / sum(freq) * 100)
+
+Target_stats <- Targets_percent %>%
+    group_by(eventtype2, timewindow,response) %>%
+  summarise(
+    mean_percent = mean(percent),
+    sd_percent = sd(percent),
+    .groups = "drop"
+  )
+```
